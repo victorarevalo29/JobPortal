@@ -1,0 +1,789 @@
+<template>
+  <section class="forum">
+    <header class="forum__hero">
+      <div class="hero__content">
+        <p class="section-kicker">Conversaciones vivas</p>
+        <h2>Mentores y cohorts diseñan soluciones en tiempo real.</h2>
+        <p>
+          Trae casos reales, retroalimentación accionable y recibe plantillas listas para iterar. Cada hilo
+          captura decisiones, aprendizajes y métricas listas para compartir con tu squad.
+        </p>
+        <div class="hero__actions">
+          <BaseButton type="button" @click="openModal">Crear nuevo hilo</BaseButton>
+          <button class="hero__link" type="button">Ver agenda de workshops</button>
+        </div>
+        <ul class="hero__stats">
+          <li v-for="stat in heroStats" :key="stat.label">
+            <span>{{ stat.value }}</span>
+            <small>{{ stat.label }}</small>
+          </li>
+        </ul>
+      </div>
+      <div class="hero__snapshot">
+        <article v-for="snapshot in heroSnapshot" :key="snapshot.label" class="snapshot-card">
+          <p>{{ snapshot.label }}</p>
+          <strong>{{ snapshot.value }}</strong>
+          <small>{{ snapshot.description }}</small>
+        </article>
+      </div>
+    </header>
+
+    <section class="forum__controls">
+      <BaseInput v-model="threadSearch" placeholder="Buscar por título, autor o palabra clave" />
+      <div class="controls__grid">
+        <div class="filters__chips">
+          <button
+            v-for="category in categoryFilters"
+            :key="category"
+            type="button"
+            class="filter-chip"
+            :class="{ 'is-active': selectedCategory === category }"
+            @click="selectedCategory = category"
+          >
+            {{ category }}
+          </button>
+        </div>
+        <div class="filters__chips filters__chips--soft">
+          <button
+            v-for="status in statusFilters"
+            :key="status"
+            type="button"
+            class="filter-pill"
+            :class="{ 'is-active': selectedStatus === status }"
+            @click="selectedStatus = status"
+          >
+            {{ status }}
+          </button>
+        </div>
+        <label class="controls__sort">
+          <span>Ordenar por</span>
+          <select v-model="sortOption">
+            <option value="recent">Más recientes</option>
+            <option value="active">Más activos</option>
+          </select>
+        </label>
+      </div>
+      <p class="controls__hint">
+        {{ forumStore.loading ? 'Cargando conversaciones…' : `${sortedThreads.length} hilos activos listos para feedback.` }}
+      </p>
+      <p v-if="forumStore.error" class="controls__error">{{ forumStore.error }}</p>
+    </section>
+      <p v-if="forumStore.error" class="controls__error">{{ forumStore.error }}</p>
+    </section>
+
+    <div class="forum__layout">
+      <div class="forum__threads">
+        <article v-if="forumStore.loading" class="thread-card thread-card--loading">Cargando conversaciones…</article>
+        <article v-else-if="!sortedThreads.length" class="thread-card thread-card--empty">
+          No encontramos hilos con esos filtros todavía.
+        </article>
+        <article v-for="thread in sortedThreads" :key="thread.id" class="thread-card">
+          <header class="thread-card__header">
+            <div>
+              <span class="thread-card__category">{{ thread.category }}</span>
+              <span class="thread-card__status">{{ thread.status }}</span>
+            </div>
+            <span>{{ thread.lastActivity }}</span>
+          </header>
+          <h3>{{ thread.title }}</h3>
+          <p>{{ thread.preview || 'Explora el último update del equipo y deja feedback.' }}</p>
+          <ul v-if="thread.focus?.length" class="thread-card__focus">
+            <li v-for="topic in thread.focus" :key="topic">{{ topic }}</li>
+          </ul>
+          <div class="thread-card__footer">
+            <span>Por {{ thread.author }}</span>
+            <span>{{ thread.replies }} respuestas</span>
+          </div>
+          <div class="thread-card__comments">
+            <p class="comments__title">Comentarios rápidos</p>
+            <div v-if="thread.comments?.length" class="comments__list">
+              <article v-for="comment in thread.comments" :key="comment.id" class="comment">
+                <strong>{{ comment.author }}</strong>
+                <p>{{ comment.content }}</p>
+                <small>{{ comment.date }}</small>
+              </article>
+            </div>
+            <p v-else class="comments__empty">Sé la primera persona en responder.</p>
+            <form class="comment-form" @submit.prevent="handleAddComment(thread.id)">
+              <input
+                v-model="commentDrafts[thread.id]"
+                type="text"
+                placeholder="Aporta una idea en una línea"
+                aria-label="Nuevo comentario"
+              />
+              <BaseButton variant="secondary" size="sm" type="submit">Comentar</BaseButton>
+            </form>
+          </div>
+        </article>
+      </div>
+
+      <aside class="forum__sidebar">
+        <article v-if="featuredThread" class="sidebar-card sidebar-card--spotlight">
+          <p class="section-kicker">Hilo destacado</p>
+          <h4>{{ featuredThread.title }}</h4>
+          <p>{{ featuredThread.preview }}</p>
+          <ul class="sidebar-card__tags">
+            <li v-for="tag in featuredThread.focus" :key="tag">{{ tag }}</li>
+          </ul>
+          <button type="button" @click="selectedCategory = featuredThread.category">Ver hilos similares</button>
+        </article>
+        <article class="sidebar-card">
+          <p class="section-kicker">Rituales</p>
+          <h4>Sesiones sugeridas</h4>
+          <ul>
+            <li v-for="ritual in rituals" :key="ritual.day">
+              <strong>{{ ritual.day }}</strong>
+              <span>{{ ritual.title }}</span>
+            </li>
+          </ul>
+        </article>
+        <article class="sidebar-card">
+          <p class="section-kicker">Snippets</p>
+          <h4>Prompts destacados</h4>
+          <div class="snippet" v-for="prompt in prompts" :key="prompt">
+            <code>{{ prompt }}</code>
+          </div>
+        </article>
+      </aside>
+    </div>
+
+    <div v-if="isModalOpen" class="forum-modal" role="dialog" aria-modal="true">
+      <div class="forum-modal__panel">
+        <header>
+          <div>
+            <p class="section-kicker">Nuevo hilo</p>
+            <h3>Comparte contexto y adjunta recursos.</h3>
+          </div>
+          <button type="button" aria-label="Cerrar" @click="closeModal">×</button>
+        </header>
+        <form @submit.prevent="handleCreateThread">
+          <BaseInput v-model="newThread.title" label="Título" placeholder="Ej. Necesito feedback en mi case study" />
+          <label class="modal-field">
+            <span>Categoría</span>
+            <select v-model="newThread.category">
+              <option v-for="option in selectableCategories" :key="option" :value="option">{{ option }}</option>
+            </select>
+          </label>
+          <label class="modal-field">
+            <span>Contexto</span>
+            <textarea
+              v-model="newThread.content"
+              rows="5"
+              placeholder="Describe el reto, qué feedback buscas y qué entregables adjuntas"
+            ></textarea>
+          </label>
+          <label class="modal-field">
+            <span>Tags rápidos</span>
+            <input v-model="newThread.focus" type="text" placeholder="Ej. Storytelling, Métricas" />
+          </label>
+          <BaseButton type="submit">Publicar hilo</BaseButton>
+        </form>
+      </div>
+    </div>
+  </section>
+</template>
+
+<script setup>
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
+import BaseButton from '@/components/BaseButton.vue'
+import BaseInput from '@/components/BaseInput.vue'
+import { useForumStore } from '@/stores/forumStore'
+import { useAuthStore } from '@/stores/authStore'
+
+const forumStore = useForumStore()
+const authStore = useAuthStore()
+const router = useRouter()
+
+const statusFilters = ['Todos', 'Nuevo', 'Con actividad']
+
+const selectedCategory = ref('Todos')
+const selectedStatus = ref(statusFilters[0])
+const threadSearch = ref('')
+const sortOption = ref('recent')
+const isModalOpen = ref(false)
+const newThread = reactive({
+  title: '',
+  category: '',
+  content: '',
+  focus: ''
+})
+const commentDrafts = ref({})
+
+const categoryFilters = computed(() => {
+  const categories = new Set(forumStore.threads.map((thread) => thread.category || 'General'))
+  return ['Todos', ...categories]
+})
+
+const selectableCategories = computed(() => {
+  const options = categoryFilters.value.filter((category) => category !== 'Todos')
+  return options.length ? options : ['General']
+})
+
+watch(categoryFilters, (filters) => {
+  if (!filters.includes(selectedCategory.value)) {
+    selectedCategory.value = 'Todos'
+  }
+})
+
+watch(
+  selectableCategories,
+  (options) => {
+    if (options.length && !options.includes(newThread.category)) {
+      newThread.category = options[0]
+    }
+  },
+  { immediate: true }
+)
+
+const prompts = [
+  'Comparte el entregable y la métrica a optimizar',
+  '¿Qué experimentos ya corriste y qué aprendiste?',
+  'Define qué tipo de feedback necesitás (UX, pitch, código)'
+]
+
+const rituals = [
+  { day: 'Martes', title: 'Clínica de portafolio async' },
+  { day: 'Jueves', title: 'Ronda de entrevistas simuladas' },
+  { day: 'Sábado', title: 'Demo day interno' }
+]
+
+const heroSnapshot = [
+  { label: 'Brief de la semana', value: 'Onboarding remoto', description: 'Optimizar en 3 iteraciones' },
+  { label: 'Snippets entregados', value: '26', description: 'Listos para copiar y pegar' },
+  { label: 'Mentores live', value: '18+', description: 'En sesiones esta semana' }
+]
+
+const filteredThreads = computed(() => {
+  let list = forumStore.threads
+  if (selectedCategory.value !== 'Todos') {
+    list = list.filter((thread) => thread.category === selectedCategory.value)
+  }
+  if (selectedStatus.value !== 'Todos') {
+    list = list.filter((thread) => thread.status === selectedStatus.value)
+  }
+  if (threadSearch.value.trim()) {
+    const query = threadSearch.value.toLowerCase()
+    list = list.filter((thread) => {
+      return (
+        thread.title.toLowerCase().includes(query) ||
+        thread.author.toLowerCase().includes(query) ||
+        thread.preview?.toLowerCase().includes(query)
+      )
+    })
+  }
+  return list
+})
+
+const sortedThreads = computed(() => {
+  const list = [...filteredThreads.value]
+  if (sortOption.value === 'active') {
+    return list.sort((a, b) => b.replies - a.replies)
+  }
+  return list
+})
+
+const featuredThread = computed(() => sortedThreads.value[0] || null)
+
+const heroStats = computed(() => {
+  const threads = forumStore.threads
+  const replies = threads.reduce((total, thread) => total + thread.replies, 0)
+  return [
+    { label: 'Hilos publicados', value: threads.length || 0 },
+    { label: 'Respuestas esta semana', value: replies || 0 },
+    { label: 'Mentores activos', value: '18+' }
+  ]
+})
+
+const openModal = () => {
+  if (!ensureAuthenticated()) return
+  isModalOpen.value = true
+}
+
+const closeModal = () => {
+  isModalOpen.value = false
+}
+
+const ensureAuthenticated = () => {
+  if (authStore.isAuthenticated) return true
+  router.push({ name: 'login', query: { redirect: '/forum' } })
+  return false
+}
+
+const handleCreateThread = async () => {
+  if (!ensureAuthenticated()) return
+  if (!newThread.title.trim() || !newThread.content.trim()) return
+  const focusList = newThread.focus
+    .split(',')
+    .map((token) => token.trim())
+    .filter(Boolean)
+  try {
+    await forumStore.createThread({
+      title: newThread.title.trim(),
+      category: newThread.category,
+      content: newThread.content.trim(),
+      author: authStore.user?._id || authStore.user?.id
+    }, { focus: focusList })
+    newThread.title = ''
+    newThread.content = ''
+    newThread.focus = ''
+    closeModal()
+  } catch (error) {
+    // handled via store error
+  }
+}
+
+const handleAddComment = async (threadId) => {
+  if (!ensureAuthenticated()) return
+  const content = (commentDrafts.value[threadId] || '').trim()
+  if (!content) return
+  try {
+    await forumStore.addComment(threadId, {
+      author: authStore.user?._id || authStore.user?.id,
+      content
+    })
+    commentDrafts.value[threadId] = ''
+  } catch (error) {
+    // error surfaced via store
+  }
+}
+
+onMounted(() => {
+  forumStore.fetchThreads()
+})
+</script>
+
+<style scoped>
+.forum {
+  padding: 3rem 0 4.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2.5rem;
+}
+
+.forum__hero {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.6rem;
+  padding: 2.5rem;
+  background: var(--gradient-hero);
+  color: #fff;
+  border-radius: calc(var(--radius-xl) * 1.1);
+  box-shadow: var(--shadow-xl);
+}
+
+.hero__content h2 {
+  font-size: clamp(2rem, 4vw, 2.6rem);
+}
+
+.hero__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin: 1.4rem 0;
+}
+
+.hero__link {
+  border: none;
+  background: transparent;
+  color: #fff;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.hero__stats {
+  list-style: none;
+  padding: 0;
+  margin: 1.5rem 0 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 1rem;
+}
+
+.hero__stats li {
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: var(--radius-lg);
+  padding: 1rem;
+  text-align: left;
+  backdrop-filter: blur(10px);
+}
+
+.hero__stats span {
+  font-size: 1.9rem;
+  font-weight: 700;
+}
+
+.hero__snapshot {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 1rem;
+}
+
+.snapshot-card {
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 1.2rem;
+  background: rgba(15, 23, 42, 0.25);
+  backdrop-filter: blur(16px);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.snapshot-card strong {
+  font-size: 1.7rem;
+}
+
+.forum__controls {
+  background: var(--clr-surface);
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--clr-border);
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  box-shadow: var(--shadow-lg);
+}
+
+.controls__grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.filters__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.filter-chip,
+.filter-pill {
+  border: 1px solid var(--clr-border);
+  border-radius: 999px;
+  padding: 0.45rem 1rem;
+  background: transparent;
+  color: var(--clr-text);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 120ms ease;
+}
+
+.filters__chips--soft .filter-pill {
+  border-style: dashed;
+}
+
+.filter-chip.is-active,
+.filter-pill.is-active {
+  background: rgba(37, 99, 235, 0.08);
+  color: var(--clr-primary);
+  border-color: rgba(37, 99, 235, 0.4);
+}
+
+.controls__sort {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-weight: 600;
+}
+
+.controls__error {
+  margin: 0;
+  color: var(--clr-danger);
+  font-weight: 600;
+}
+
+.controls__sort select {
+  border-radius: 999px;
+  border: 1px solid var(--clr-border);
+  padding: 0.5rem 1rem;
+  font-family: var(--font-heading);
+}
+
+.controls__hint {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--clr-muted);
+}
+
+.forum__layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.8fr) minmax(0, 0.9fr);
+  gap: 1.5rem;
+}
+
+@media (max-width: 960px) {
+  .forum__layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.forum__threads {
+  display: flex;
+  flex-direction: column;
+  gap: 1.2rem;
+}
+
+.thread-card {
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--clr-border);
+  padding: 1.8rem;
+  background: var(--clr-surface);
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.thread-card--loading,
+.thread-card--empty {
+  text-align: center;
+  color: var(--clr-muted);
+}
+
+.thread-card__header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  color: var(--clr-muted);
+  gap: 0.7rem;
+}
+
+.thread-card__category {
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  font-size: 0.7rem;
+  color: var(--clr-accent);
+  font-weight: 700;
+  margin-right: 0.4rem;
+}
+
+.thread-card__status {
+  border-radius: 999px;
+  padding: 0.15rem 0.8rem;
+  background: rgba(37, 99, 235, 0.08);
+  color: var(--clr-primary);
+  font-size: 0.75rem;
+}
+
+.thread-card__focus {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.thread-card__focus li {
+  border-radius: 999px;
+  padding: 0.3rem 0.8rem;
+  background: var(--clr-bg-muted);
+  font-size: 0.8rem;
+}
+
+.thread-card__footer {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.9rem;
+  color: var(--clr-muted);
+}
+
+.thread-card__comments {
+  margin-top: 0.8rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid var(--clr-border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.comments__title {
+  font-weight: 600;
+  margin: 0;
+}
+
+.comments__list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.comment {
+  background: var(--clr-bg-muted);
+  border-radius: var(--radius-lg);
+  padding: 0.8rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.comment strong {
+  font-size: 0.9rem;
+}
+
+.comment p {
+  margin: 0;
+}
+
+.comment-form {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.comment-form input {
+  flex: 1;
+  border-radius: 999px;
+  border: 1px solid var(--clr-border);
+  padding: 0.7rem 1rem;
+  font-family: var(--font-heading);
+}
+
+.forum__sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 1.2rem;
+}
+
+.sidebar-card {
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--clr-border);
+  padding: 1.5rem;
+  background: var(--clr-bg-muted);
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.sidebar-card--spotlight {
+  background: linear-gradient(145deg, rgba(15, 23, 42, 0.9), rgba(59, 130, 246, 0.35));
+  color: #fff;
+  border: none;
+  box-shadow: var(--shadow-xl);
+}
+
+.sidebar-card--spotlight button {
+  align-self: flex-start;
+  border: none;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  border-radius: 999px;
+  padding: 0.4rem 1rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.sidebar-card__tags {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.sidebar-card__tags li {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  padding: 0.3rem 0.7rem;
+  font-size: 0.8rem;
+}
+
+.sidebar-card ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.sidebar-card li {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.snippet {
+  background: #fff;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--clr-border);
+  padding: 0.7rem 1rem;
+}
+
+.snippet code {
+  font-family: 'Space Grotesk', monospace;
+  font-size: 0.85rem;
+}
+
+.forum-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  z-index: 30;
+}
+
+.forum-modal__panel {
+  background: #fff;
+  border-radius: var(--radius-xl);
+  padding: 2rem;
+  width: min(520px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 1.2rem;
+}
+
+.forum-modal header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.forum-modal header button {
+  border: none;
+  background: transparent;
+  font-size: 1.8rem;
+  cursor: pointer;
+}
+
+.forum-modal form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.modal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  font-weight: 600;
+}
+
+.modal-field select,
+.modal-field textarea,
+.modal-field input {
+  border-radius: 1rem;
+  border: 1px solid var(--clr-border);
+  padding: 0.9rem 1rem;
+  font-family: var(--font-heading);
+}
+
+.comments__empty {
+  margin: 0;
+  color: var(--clr-muted);
+  font-style: italic;
+}
+
+@media (max-width: 640px) {
+  .forum__hero,
+  .forum-modal__panel {
+    padding: 1.6rem;
+  }
+}
+</style>

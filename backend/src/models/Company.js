@@ -1,0 +1,46 @@
+import mongoose from 'mongoose'
+
+const { Schema, model } = mongoose
+
+// Captures employer branding info for job listings and reviews.
+const companySchema = new Schema({
+  name: {
+    type: String,
+    required: true,
+    trim: true,
+    unique: true,
+    maxlength: 120
+  },
+  description: {
+    type: String,
+    trim: true,
+    maxlength: 1500
+  },
+  location: {
+    type: String,
+    trim: true,
+    maxlength: 200
+  },
+  industry: {
+    type: String,
+    trim: true,
+    maxlength: 120
+  },
+  avgRating: {
+    type: Number,
+    min: 0,
+    max: 5,
+    default: 0
+  },
+  logoUrl: {
+    type: String,
+    trim: true
+  }
+}, {
+  timestamps: true
+})
+
+companySchema.index({ name: 1 }, { unique: true })
+companySchema.index({ industry: 1 })
+
+export const Company = model('Company', companySchema)

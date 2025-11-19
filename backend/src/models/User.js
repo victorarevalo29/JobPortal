@@ -1,0 +1,97 @@
+import mongoose from 'mongoose'
+
+const { Schema, model } = mongoose
+
+// Stores both job seekers and employers with flexible profile metadata.
+const userSchema = new Schema({
+  name: {
+    type: String,
+    trim: true,
+    minlength: 2,
+    maxlength: 80,
+    required: true
+  },
+  email: {
+    type: String,
+    trim: true,
+    lowercase: true,
+    required: true,
+    unique: true,
+    match: /.+@.+\..+/
+  },
+  passwordHash: {
+    type: String,
+    required: true,
+    minlength: 10,
+    select: false
+  },
+  role: {
+    type: String,
+    enum: ['user', 'employer'],
+    default: 'user'
+  },
+  bio: {
+    type: String,
+    trim: true,
+    maxlength: 400
+  },
+  resumeUrl: {
+    type: String,
+    trim: true
+  },
+  skills: {
+    type: [String],
+    default: [],
+    validate: {
+      validator: (skills) => skills.length <= 25,
+      message: 'Máximo 25 skills por usuario'
+    }
+  },
+  photoUrl: {
+    type: String,
+    trim: true
+  },
+  stats: {
+    applicationsSent: { type: Number, default: 0, min: 0 },
+    profileViews: { type: Number, default: 0, min: 0 }
+  },
+  alerts: {
+    type: [{
+      type: {
+        type: String,
+        trim: true,
+        required: true
+      },
+      enabled: {
+        type: Boolean,
+        default: true
+      }
+    }],
+    default: []
+  },
+  company: {
+    type: Schema.Types.ObjectId,
+    ref: 'Company'
+  }
+}, {
+  timestamps: true
+})
+
+userSchema.set('toJSON', {
+  transform: (_, ret) => {
+    delete ret.passwordHash
+    return ret
+  }
+})
+
+userSchema.set('toObject', {
+  transform: (_, ret) => {
+    delete ret.passwordHash
+    return ret
+  }
+})
+
+userSchema.index({ email: 1 }, { unique: true })
+userSchema.index({ role: 1 })
+
+export const User = model('User', userSchema)

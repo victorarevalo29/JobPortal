@@ -1,0 +1,271 @@
+<template>
+  <section class="applicants">
+    <header class="applicants__header">
+      <div>
+        <p class="section-kicker">Talent pipeline</p>
+        <h1>Revisa perfiles y prioriza entrevistas.</h1>
+        <p>Tu panel organiza aplicaciones, estatus y notas clave para decidir más rápido.</p>
+      </div>
+      <BaseButton size="sm" variant="ghost" @click="refreshData">Actualizar</BaseButton>
+    </header>
+
+    <div class="applicants__layout">
+      <BaseCard class="applicants__table">
+        <template #title>Postulaciones</template>
+        <table class="panel-table">
+          <thead>
+            <tr>
+              <th>Candidato</th>
+              <th>Rol</th>
+              <th>Empresa</th>
+              <th>Mensaje</th>
+              <th>Estatus</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="application in filteredApplications"
+              :key="application.id"
+              @click="selectApplicant(application)"
+              :class="{ active: activeApplicant && activeApplicant.id === application.id }"
+            >
+              <td>{{ application.candidate }}</td>
+              <td>{{ application.role }}</td>
+              <td>{{ application.jobCompany || 'Confidencial' }}</td>
+              <td>{{ application.message || 'Sin mensaje' }}</td>
+              <td>
+                <span class="status-chip" :class="statusClass(application.statusLabel)">{{ application.statusLabel }}</span>
+              </td>
+            </tr>
+            <tr v-if="!filteredApplications.length">
+              <td colspan="5" class="empty-cell">
+                {{ jobsStore.loading ? 'Cargando postulaciones…' : 'Aún no hay postulaciones para tus vacantes.' }}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </BaseCard>
+
+      <BaseCard class="applicants__details" v-if="activeApplicant">
+        <template #title>{{ activeApplicant.candidate }}</template>
+        <div class="detail-block">
+          <p class="detail-label">Rol</p>
+          <p class="detail-value">{{ activeApplicant.role }}</p>
+        </div>
+        <div class="detail-block" v-if="activeApplicant.candidateEmail">
+          <p class="detail-label">Correo</p>
+          <p class="detail-value">{{ activeApplicant.candidateEmail }}</p>
+        </div>
+        <div class="detail-block">
+          <p class="detail-label">Mensaje enviado</p>
+          <p class="detail-value">{{ activeApplicant.message || 'No se incluyó mensaje adicional.' }}</p>
+        </div>
+        <div class="detail-block">
+          <p class="detail-label">Estado</p>
+          <p class="detail-value">{{ activeApplicant.statusLabel }}</p>
+        </div>
+        <div class="detail-block" v-if="activeApplicant.jobCompany">
+          <p class="detail-label">Empresa</p>
+          <p class="detail-value">{{ activeApplicant.jobCompany }}</p>
+        </div>
+        <div class="detail-block">
+          <p class="detail-label">Acciones</p>
+          <div class="detail-actions">
+            <BaseButton size="sm" variant="ghost" @click="emailCandidate(activeApplicant.candidateEmail)">
+              Contactar
+            </BaseButton>
+            <button class="table-link" type="button" @click="goToJob(activeApplicant.jobId)">Ver vacante</button>
+          </div>
+        </div>
+      </BaseCard>
+      <BaseCard v-else class="applicants__details">
+        <template #title>Selecciona un perfil</template>
+        <p>Haz clic en cualquier fila para revisar el contexto y enlazar a su portafolio.</p>
+      </BaseCard>
+    </div>
+  </section>
+</template>
+
+<script setup>
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
+import BaseButton from '@/components/BaseButton.vue'
+import BaseCard from '@/components/BaseCard.vue'
+import { useJobsStore } from '@/stores/jobsStore'
+import { useAuthStore } from '@/stores/authStore'
+
+const jobsStore = useJobsStore()
+const authStore = useAuthStore()
+const router = useRouter()
+const activeApplicant = ref(null)
+
+const employerCompanyId = computed(() => authStore.user?.company?._id || authStore.user?.company)
+
+const employerJobIds = computed(() => {
+  if (!jobsStore.jobs.length) return new Set()
+  if (!employerCompanyId.value) return new Set(jobsStore.jobs.map((job) => job.id))
+  return new Set(jobsStore.jobs.filter((job) => job.companyId === employerCompanyId.value).map((job) => job.id))
+})
+
+const filteredApplications = computed(() => {
+  const jobIds = employerJobIds.value
+  if (!jobIds.size) {
+    return jobsStore.applications
+  }
+  return jobsStore.applications.filter((application) => jobIds.has(application.jobId))
+})
+
+const selectApplicant = (application) => {
+  activeApplicant.value = application
+}
+
+const statusClass = (status) => {
+  if (!status) return ''
+  return status
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[^a-z0-9]+/g, '-')
+}
+
+const emailCandidate = (email) => {
+  if (!email) return
+  window.location.href = `mailto:${email}`
+}
+
+const goToJob = (jobId) => {
+  if (!jobId) return
+  router.push({ name: 'job-detail', params: { id: jobId } })
+}
+
+const refreshData = async () => {
+  await jobsStore.fetchApplications()
+}
+
+onMounted(async () => {
+  if (!jobsStore.jobs.length) {
+    await jobsStore.fetchJobs()
+  }
+  if (!jobsStore.applications.length) {
+    await jobsStore.fetchApplications()
+  }
+  activeApplicant.value = filteredApplications.value[0] || null
+})
+
+watch(filteredApplications, (list) => {
+  if (!list.length) {
+    activeApplicant.value = null
+    return
+  }
+  if (!activeApplicant.value || !list.some((item) => item.id === activeApplicant.value.id)) {
+    activeApplicant.value = list[0]
+  }
+})
+</script>
+
+<style scoped>
+.applicants {
+  padding: 3rem 0 4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2.5rem;
+}
+
+.applicants__header {
+  background: var(--clr-surface);
+  border-radius: var(--radius-xl);
+  padding: 2.5rem;
+  box-shadow: var(--shadow-card);
+  display: flex;
+  justify-content: space-between;
+  gap: 2rem;
+  flex-wrap: wrap;
+}
+
+.applicants__layout {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 2rem;
+}
+
+.panel-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.panel-table th,
+.panel-table td {
+  text-align: left;
+  padding: 0.85rem 0;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.panel-table tr {
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.panel-table tr:hover {
+  background: rgba(148, 163, 184, 0.08);
+}
+
+.panel-table tr.active {
+  background: rgba(59, 130, 246, 0.08);
+}
+
+.status-chip {
+  padding: 0.2rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.status-chip.shortlisted {
+  background: rgba(16, 185, 129, 0.12);
+  color: #059669;
+}
+
+.status-chip.entrevista {
+  background: rgba(59, 130, 246, 0.1);
+  color: var(--clr-primary);
+}
+
+.status-chip.hold {
+  background: rgba(245, 158, 11, 0.12);
+  color: #b45309;
+}
+
+.empty-cell {
+  text-align: center;
+  padding: 2rem 0;
+  color: var(--clr-muted);
+}
+
+.detail-block {
+  margin-bottom: 1.2rem;
+}
+
+.detail-label {
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 0.75rem;
+  color: var(--clr-muted);
+}
+
+.detail-value {
+  font-size: 1rem;
+  margin: 0.2rem 0 0;
+}
+
+.detail-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+@media (max-width: 960px) {
+  .applicants__layout {
+    grid-template-columns: 1fr;
+  }
+}
+</style>

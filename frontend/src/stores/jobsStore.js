@@ -1,0 +1,198 @@
+import { defineStore } from 'pinia'
+import { apiRequest } from '@/services/httpClient'
+
+const CONTRACT_LABELS = {
+  'full-time': 'Tiempo completo',
+  'part-time': 'Medio tiempo',
+  contract: 'Contrato',
+  internship: 'Internship',
+  temporary: 'Temporal'
+}
+
+const APPLICATION_STATUS = {
+  submitted: 'Enviada',
+  'in-review': 'En revisión',
+  interview: 'Entrevista',
+  offer: 'Oferta',
+  rejected: 'Rechazada'
+}
+
+const currencyFormatter = (currency = 'USD') =>
+  new Intl.NumberFormat('es-MX', {
+    style: 'currency',
+    currency,
+    maximumFractionDigits: 0
+  })
+
+const formatSalaryRange = (range) => {
+  if (!range?.min && !range?.max) return 'Salario a convenir'
+  const formatter = currencyFormatter(range.currency || 'USD')
+  if (range.min && range.max) {
+    return `${formatter.format(range.min)} - ${formatter.format(range.max)} ${range.currency || 'USD'}`
+  }
+  if (range.min) return `${formatter.format(range.min)} ${range.currency || 'USD'}`
+  if (range.max) return `${formatter.format(range.max)} ${range.currency || 'USD'}`
+  return 'Salario a convenir'
+}
+
+const formatRelativeDate = (value) => {
+  if (!value) return 'Reciente'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return 'Reciente'
+  const diffDays = Math.round((Date.now() - date.getTime()) / (1000 * 60 * 60 * 24))
+  if (diffDays <= 0) return 'Hoy'
+  if (diffDays === 1) return 'Hace 1 día'
+  return `Hace ${diffDays} días`
+}
+
+const mapJob = (job) => ({
+  id: job._id,
+  title: job.title,
+  company: job.company?.name || 'Compañía confidencial',
+  companyId: job.company?._id || job.company,
+  location: job.location || 'Remoto · LATAM',
+  salaryRange: formatSalaryRange(job.salaryRange),
+  contractType: job.contractType,
+  modality: CONTRACT_LABELS[job.contractType] || 'Flexible',
+  skills: job.skills || [],
+  description: job.description,
+  requirements: job.requiredExperience ? [job.requiredExperience] : [],
+  industry: job.company?.industry,
+  companySummary: job.company?.description,
+  companyHq: job.company?.location,
+  publishedAt: job.publishedAt || job.createdAt,
+  postedAgo: formatRelativeDate(job.publishedAt || job.createdAt),
+  status: job.status,
+  raw: job
+})
+
+const mapApplication = (application) => ({
+  id: application._id,
+  jobId: application.job?._id || application.job,
+  role: application.job?.title || 'Rol confidencial',
+  candidate: application.candidate?.name || 'Talento anónimo',
+  candidateEmail: application.candidate?.email,
+  status: application.status,
+  statusLabel: APPLICATION_STATUS[application.status] || application.status,
+  submittedAt: application.appliedAt || application.createdAt,
+  message: application.message,
+  jobCompany: application.job?.company?.name || application.job?.company,
+  raw: application
+})
+
+// Maneja listados de empleos y detalles seleccionados.
+export const useJobsStore = defineStore('jobs', {
+  state: () => ({
+    jobs: [],
+    selectedJob: null,
+    filters: {
+      query: '',
+      location: '',
+      modality: ''
+    },
+    applications: [],
+    loading: false,
+    saving: false,
+    error: ''
+  }),
+  actions: {
+    async fetchJobs(params = {}) {
+      this.loading = true
+      this.error = ''
+      try {
+        const data = await apiRequest('/jobs', {
+          params: { status: 'active', ...params }
+        })
+        this.jobs = Array.isArray(data) ? data.map(mapJob) : []
+      } catch (error) {
+        this.error = error.message
+        this.jobs = []
+      } finally {
+        this.loading = false
+      }
+    },
+    async fetchJobById(id) {
+      if (!id) {
+        this.selectedJob = null
+        return
+      }
+      this.loading = true
+      this.error = ''
+      try {
+        const data = await apiRequest(`/jobs/${id}`)
+        this.selectedJob = mapJob(data)
+      } catch (error) {
+        this.error = error.message
+        this.selectedJob = null
+      } finally {
+        this.loading = false
+      }
+    },
+    async fetchApplications(params = {}) {
+      this.loading = true
+      this.error = ''
+      try {
+        const data = await apiRequest('/applications', { params, auth: true })
+        this.applications = Array.isArray(data) ? data.map(mapApplication) : []
+      } catch (error) {
+        this.applications = []
+        this.error = error.message
+      } finally {
+        this.loading = false
+      }
+    },
+    setFilters(newFilters) {
+      this.filters = { ...this.filters, ...newFilters }
+    },
+    async createJob(payload) {
+      this.saving = true
+      this.error = ''
+      try {
+        const data = await apiRequest('/jobs', { method: 'POST', data: payload, auth: true })
+        const job = mapJob(data)
+        this.jobs = [job, ...this.jobs]
+        return job
+      } catch (error) {
+        this.error = error.message
+        throw error
+      } finally {
+        this.saving = false
+      }
+    },
+    async updateJob(id, updates) {
+      if (!id) return
+      this.saving = true
+      this.error = ''
+      try {
+        const data = await apiRequest(`/jobs/${id}`, { method: 'PATCH', data: updates, auth: true })
+        const updated = mapJob(data)
+        this.jobs = this.jobs.map((job) => (job.id === id ? updated : job))
+        if (this.selectedJob?.id === id) {
+          this.selectedJob = updated
+        }
+      } catch (error) {
+        this.error = error.message
+        throw error
+      } finally {
+        this.saving = false
+      }
+    },
+    async deleteJob(id) {
+      if (!id) return
+      this.saving = true
+      this.error = ''
+      try {
+        await apiRequest(`/jobs/${id}`, { method: 'DELETE', auth: true })
+        this.jobs = this.jobs.filter((job) => job.id !== id)
+        if (this.selectedJob?.id === id) {
+          this.selectedJob = null
+        }
+      } catch (error) {
+        this.error = error.message
+        throw error
+      } finally {
+        this.saving = false
+      }
+    }
+  }
+})

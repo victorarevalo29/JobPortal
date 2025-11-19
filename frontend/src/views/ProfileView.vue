@@ -1,0 +1,810 @@
+<template>
+  <section class="profile">
+    <div v-if="authStore.isAuthenticated" class="profile__stack">
+      <BaseCard class="profile__hero-card">
+        <div class="hero-card__inner">
+          <div class="hero-card__identity">
+            <div class="hero-card__avatar-ring">
+              <img :src="avatarUrl" alt="Foto de perfil" class="hero-card__avatar" />
+            </div>
+            <div>
+              <p class="section-kicker">Perfil principal</p>
+              <h1>{{ form.name || 'Tu nombre' }}</h1>
+              <div class="hero-card__meta-row">
+                <span class="hero-card__role-pill">{{ roleLabel }}</span>
+                <span class="hero-card__email">{{ form.email || 'tu@correo.com' }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="isEmployer && heroCompanyName" class="hero-card__company">
+            <p class="section-kicker">Empresa</p>
+            <h3>{{ heroCompanyName }}</h3>
+            <p class="hero-card__company-meta">
+              {{ companyForm.industry || companyForm.location || 'Completa la ficha de tu empresa' }}
+            </p>
+          </div>
+
+          <div class="hero-card__status">
+            <div>
+              <p class="hero-card__status-label">{{ profileCompletionLabel }}</p>
+              <p class="hero-card__status-value">{{ profileCompleteness }}%</p>
+            </div>
+            <div class="hero-card__progress">
+              <div class="hero-card__progress-bar" :style="{ '--progress': profileCompleteness + '%' }"></div>
+            </div>
+            <BaseButton variant="ghost" size="sm" @click="authStore.logout">Cerrar sesión</BaseButton>
+          </div>
+        </div>
+      </BaseCard>
+
+      <BaseCard class="profile__form-shell">
+        <header class="form-shell__header">
+          <div>
+            <p class="section-kicker">Edición de perfil</p>
+            <h2>Actualiza tu presencia profesional</h2>
+          </div>
+          <p>Comparte contexto, habilidades y enlaces para facilitar mejores conexiones.</p>
+        </header>
+
+        <div v-if="isEmployer" class="profile__tabs">
+          <button
+            type="button"
+            :class="['profile__tab', { 'is-active': activeTab === 'personal' }]"
+            @click="activeTab = 'personal'"
+          >
+            Perfil personal
+          </button>
+          <button
+            type="button"
+            :class="['profile__tab', { 'is-active': activeTab === 'company' }]"
+            @click="activeTab = 'company'"
+          >
+            Empresa
+          </button>
+        </div>
+
+        <form
+          v-if="!isEmployer || activeTab === 'personal'"
+          class="profile__panel-stack"
+          @submit.prevent="handleSubmit"
+        >
+          <section class="panel-card">
+            <header>
+              <div>
+                <p class="section-kicker">Información personal</p>
+                <h3>Datos visibles para la comunidad</h3>
+              </div>
+            </header>
+            <div class="panel-grid">
+              <div class="panel-field" :class="{ 'has-error': isFieldInvalid('name') }">
+                <label>Nombre completo</label>
+                <BaseInput
+                  v-model="form.name"
+                  placeholder="Ej. Marcela Duarte"
+                  required
+                  @blur="markTouched('name')"
+                />
+                <small v-if="isFieldInvalid('name')">Ingresa al menos 3 caracteres.</small>
+              </div>
+              <div class="panel-field" :class="{ 'has-error': isFieldInvalid('email') }">
+                <label>Correo</label>
+                <BaseInput
+                  type="email"
+                  v-model="form.email"
+                  placeholder="tu@correo.com"
+                  required
+                  @blur="markTouched('email')"
+                />
+                <small v-if="isFieldInvalid('email')">Usa un correo válido.</small>
+              </div>
+            </div>
+            <div class="panel-field">
+              <label>Bio</label>
+              <textarea v-model="form.bio" rows="4" placeholder="Comparte qué te apasiona"></textarea>
+              <small>Comparte logros o contextos que ayuden a tu próximo match.</small>
+            </div>
+          </section>
+
+          <section class="panel-card">
+            <header>
+              <div>
+                <p class="section-kicker">Foto de perfil</p>
+                <h3>Cuéntale al resto quién eres</h3>
+              </div>
+            </header>
+            <div class="photo-card">
+              <img :src="avatarUrl" alt="Vista previa" class="photo-card__preview" />
+              <div class="panel-field" :class="{ 'has-error': isFieldInvalid('photoUrl') }">
+                <label>URL de la imagen</label>
+                <BaseInput
+                  v-model="form.photoUrl"
+                  placeholder="https://uploads.jobportal.dev/avatar.jpg"
+                  @blur="markTouched('photoUrl')"
+                />
+                <small v-if="isFieldInvalid('photoUrl')">Usa un enlace que comience con http(s).</small>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel-card">
+            <header>
+              <div>
+                <p class="section-kicker">CV y portafolio</p>
+                <h3>Comparte tu mejor entrega</h3>
+              </div>
+            </header>
+            <div class="panel-field" :class="{ 'has-error': isFieldInvalid('resumeUrl') }">
+              <label>Link público</label>
+              <BaseInput
+                v-model="form.resumeUrl"
+                placeholder="https://mi-portafolio.dev"
+                @blur="markTouched('resumeUrl')"
+              />
+              <small v-if="isFieldInvalid('resumeUrl')">Comparte un enlace válido.</small>
+            </div>
+            <div class="panel-actions">
+              <BaseButton type="button" variant="ghost" size="sm" :disabled="!form.resumeUrl" @click="openResume">
+                {{ form.resumeUrl ? 'Ver CV' : 'Añade tu CV' }}
+              </BaseButton>
+            </div>
+          </section>
+
+          <section class="panel-card">
+            <header>
+              <div>
+                <p class="section-kicker">Skills</p>
+                <h3>Haz match según tus fortalezas</h3>
+              </div>
+            </header>
+            <div class="panel-field">
+              <label>Habilidades (separadas por coma)</label>
+              <BaseInput v-model="skillsInput" placeholder="Product discovery, UX research" />
+            </div>
+            <div class="skills-chips" v-if="displaySkills.length">
+              <span v-for="skill in displaySkills" :key="skill">{{ skill }}</span>
+            </div>
+          </section>
+
+          <div class="profile__form-actions">
+            <BaseButton type="submit" :is-loading="isSaving">Guardar cambios</BaseButton>
+            <p v-if="feedback.message" :class="['feedback', feedback.type]">{{ feedback.message }}</p>
+          </div>
+        </form>
+
+        <form v-else class="profile__panel-stack" @submit.prevent="handleCompanySubmit">
+          <section class="panel-card">
+            <header>
+              <div>
+                <p class="section-kicker">Ficha de la empresa</p>
+                <h3>Presenta a tu equipo en las vacantes</h3>
+              </div>
+            </header>
+            <div class="panel-grid">
+              <div class="panel-field" :class="{ 'has-error': isCompanyFieldInvalid('name') }">
+                <label>Nombre de la empresa</label>
+                <BaseInput
+                  v-model="companyForm.name"
+                  placeholder="Ej. Pulsar Analytics"
+                  required
+                  @blur="markCompanyTouched('name')"
+                />
+                <small v-if="isCompanyFieldInvalid('name')">Escribe al menos 2 caracteres.</small>
+              </div>
+              <div class="panel-field" :class="{ 'has-error': isCompanyFieldInvalid('industry') }">
+                <label>Industria</label>
+                <BaseInput v-model="companyForm.industry" placeholder="Data / Impacto" @blur="markCompanyTouched('industry')" />
+              </div>
+            </div>
+            <div class="panel-grid">
+              <div class="panel-field" :class="{ 'has-error': isCompanyFieldInvalid('location') }">
+                <label>Ubicación</label>
+                <BaseInput v-model="companyForm.location" placeholder="Ciudad, País" @blur="markCompanyTouched('location')" />
+              </div>
+              <div class="panel-field" :class="{ 'has-error': isCompanyFieldInvalid('logoUrl') }">
+                <label>Logo (URL)</label>
+                <BaseInput
+                  v-model="companyForm.logoUrl"
+                  placeholder="https://uploads.jobportal.dev/logo.png"
+                  @blur="markCompanyTouched('logoUrl')"
+                />
+                <small v-if="isCompanyFieldInvalid('logoUrl')">Usa un enlace válido.</small>
+              </div>
+            </div>
+            <div class="panel-field" :class="{ 'has-error': isCompanyFieldInvalid('description') }">
+              <label>Descripción</label>
+              <textarea
+                v-model="companyForm.description"
+                rows="4"
+                maxlength="1500"
+                placeholder="Cuenta misión, cultura o stack del equipo"
+                @blur="markCompanyTouched('description')"
+              ></textarea>
+              <small v-if="isCompanyFieldInvalid('description')">Máximo 1500 caracteres.</small>
+            </div>
+          </section>
+
+          <div class="profile__form-actions">
+            <BaseButton type="submit" :is-loading="companySaving">Guardar empresa</BaseButton>
+            <p v-if="companyFeedback.message" :class="['feedback', companyFeedback.type]">
+              {{ companyFeedback.message }}
+            </p>
+          </div>
+        </form>
+      </BaseCard>
+    </div>
+
+    <BaseCard v-else class="profile__empty-card">
+      <p>Inicia sesión para personalizar tu experiencia.</p>
+      <BaseButton @click="authStore.login({ email: 'demo@uni.edu', password: 'demo' })">Login demo</BaseButton>
+    </BaseCard>
+  </section>
+</template>
+
+<script setup>
+import { computed, reactive, ref, watch } from 'vue'
+import BaseCard from '@/components/BaseCard.vue'
+import BaseButton from '@/components/BaseButton.vue'
+import BaseInput from '@/components/BaseInput.vue'
+import { useAuthStore } from '@/stores/authStore'
+
+const authStore = useAuthStore()
+
+const form = reactive({
+  name: '',
+  email: '',
+  photoUrl: '',
+  resumeUrl: '',
+  bio: ''
+})
+
+const skillsInput = ref('')
+const feedback = reactive({ message: '', type: '' })
+const touchedFields = reactive({ name: false, email: false, photoUrl: false, resumeUrl: false })
+const companyForm = reactive({
+  name: '',
+  industry: '',
+  location: '',
+  description: '',
+  logoUrl: ''
+})
+const companyTouched = reactive({ name: false, industry: false, location: false, description: false, logoUrl: false })
+const companyFeedback = reactive({ message: '', type: '' })
+const companySaving = ref(false)
+const activeTab = ref('personal')
+
+const roleLabel = computed(() => (authStore.user?.role === 'employer' ? 'Employer' : 'Talento'))
+const isSaving = computed(() => authStore.profileSaving)
+const isEmployer = computed(() => authStore.user?.role === 'employer')
+const avatarUrl = computed(() => {
+  if (form.photoUrl) return form.photoUrl
+  const base = form.name || 'JobPortal'
+  return `https://ui-avatars.com/api/?name=${encodeURIComponent(base)}&background=2563eb&color=f8fafc`
+})
+const profileCompleteness = computed(() => {
+  const essentials = ['name', 'email', 'resumeUrl', 'bio']
+  const filled = essentials.reduce((acc, field) => (form[field]?.trim() ? acc + 1 : acc), 0)
+  return Math.round((filled / essentials.length) * 100)
+})
+const profileCompletionLabel = computed(() =>
+  profileCompleteness.value >= 80 ? 'Perfil casi listo' : 'Sigue completando tus datos'
+)
+const displaySkills = computed(() =>
+  skillsInput.value
+    .split(',')
+    .map((skill) => skill.trim())
+    .filter(Boolean)
+)
+const heroCompanyName = computed(() => authStore.user?.company?.name || companyForm.name || '')
+
+watch(isEmployer, (value) => {
+  if (!value) {
+    activeTab.value = 'personal'
+  }
+})
+
+const syncCompanyForm = (company) => {
+  companyForm.name = company?.name || ''
+  companyForm.industry = company?.industry || ''
+  companyForm.location = company?.location || ''
+  companyForm.description = company?.description || ''
+  companyForm.logoUrl = company?.logoUrl || ''
+  Object.keys(companyTouched).forEach((field) => {
+    companyTouched[field] = false
+  })
+  companyFeedback.message = ''
+  companyFeedback.type = ''
+}
+
+const syncForm = (user) => {
+  form.name = user?.name || ''
+  form.email = user?.email || ''
+  form.photoUrl = user?.photoUrl || ''
+  form.resumeUrl = user?.resumeUrl || ''
+  form.bio = user?.bio || ''
+  skillsInput.value = Array.isArray(user?.skills) ? user.skills.join(', ') : ''
+  Object.keys(touchedFields).forEach((field) => {
+    touchedFields[field] = false
+  })
+  syncCompanyForm(user?.company)
+}
+
+watch(
+  () => authStore.user,
+  (user) => {
+    syncForm(user)
+  },
+  { immediate: true }
+)
+
+const validators = {
+  name: (value) => value.trim().length >= 3,
+  email: (value) => /.+@.+\..+/.test(value.trim()),
+  photoUrl: (value) => !value || /^https?:\/\//i.test(value.trim()),
+  resumeUrl: (value) => !value || /^https?:\/\//i.test(value.trim())
+}
+
+const companyValidators = {
+  name: (value) => value.trim().length >= 2,
+  industry: (value) => !value || value.trim().length >= 2,
+  location: (value) => !value || value.trim().length >= 2,
+  logoUrl: (value) => !value || /^https?:\/\//i.test(value.trim()),
+  description: (value) => value.length <= 1500
+}
+
+const markTouched = (field) => {
+  touchedFields[field] = true
+}
+
+const isFieldInvalid = (field) => {
+  const validator = validators[field]
+  if (!validator) return false
+  return touchedFields[field] && !validator(form[field] || '')
+}
+
+const markCompanyTouched = (field) => {
+  companyTouched[field] = true
+}
+
+const isCompanyFieldInvalid = (field) => {
+  const validator = companyValidators[field]
+  if (!validator) return false
+  return companyTouched[field] && !validator(companyForm[field] || '')
+}
+
+const buildCompanyPayload = () => ({
+  name: companyForm.name.trim(),
+  industry: companyForm.industry.trim() || undefined,
+  location: companyForm.location.trim() || undefined,
+  description: companyForm.description.trim() || undefined,
+  logoUrl: companyForm.logoUrl.trim() || undefined
+})
+
+const openResume = () => {
+  if (!form.resumeUrl) return
+  window.open(form.resumeUrl, '_blank')
+}
+
+const handleSubmit = async () => {
+  feedback.message = ''
+  Object.keys(touchedFields).forEach((field) => {
+    touchedFields[field] = true
+  })
+
+  if (
+    isFieldInvalid('name') ||
+    isFieldInvalid('email') ||
+    isFieldInvalid('photoUrl') ||
+    isFieldInvalid('resumeUrl')
+  ) {
+    feedback.message = 'Revisa los campos marcados en rojo.'
+    feedback.type = 'error'
+    return
+  }
+
+  const payload = {
+    name: form.name.trim(),
+    email: form.email.trim(),
+    photoUrl: form.photoUrl.trim(),
+    resumeUrl: form.resumeUrl.trim(),
+    bio: form.bio.trim(),
+    skills: displaySkills.value
+  }
+
+  Object.entries(payload).forEach(([key, value]) => {
+    if ((typeof value === 'string' && value === '') || (Array.isArray(value) && !value.length)) {
+      delete payload[key]
+    }
+  })
+
+  try {
+    await authStore.updateProfile(payload)
+    feedback.message = 'Perfil actualizado'
+    feedback.type = 'success'
+  } catch (error) {
+    feedback.message = error.message || error?.errors?.[0]?.msg || 'No se pudo actualizar'
+    feedback.type = 'error'
+  }
+}
+
+const handleCompanySubmit = async () => {
+  if (!isEmployer.value) return
+  companyFeedback.message = ''
+  Object.keys(companyTouched).forEach((field) => {
+    companyTouched[field] = true
+  })
+
+  if (isCompanyFieldInvalid('name') || isCompanyFieldInvalid('logoUrl')) {
+    companyFeedback.message = 'Verifica los campos de empresa marcados'
+    companyFeedback.type = 'error'
+    return
+  }
+
+  const payload = { company: buildCompanyPayload() }
+  companySaving.value = true
+  try {
+    await authStore.updateProfile(payload)
+    companyFeedback.message = 'Empresa actualizada'
+    companyFeedback.type = 'success'
+    syncCompanyForm(authStore.user?.company)
+  } catch (error) {
+    companyFeedback.message = error.message || error?.errors?.[0]?.msg || 'No se pudo actualizar la empresa'
+    companyFeedback.type = 'error'
+  } finally {
+    companySaving.value = false
+  }
+}
+</script>
+
+<style scoped>
+.profile {
+  padding: 3rem 0 4rem;
+}
+
+.profile__stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+}
+
+.profile__hero-card {
+  background: linear-gradient(135deg, #0f172a, #1d4ed8);
+  color: #f8fafc;
+  border: none;
+  padding: 2.25rem;
+  overflow: hidden;
+}
+
+.hero-card__inner {
+  display: flex;
+  justify-content: space-between;
+  gap: 2rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.hero-card__identity {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.hero-card__avatar-ring {
+  width: 140px;
+  height: 140px;
+  border-radius: 999px;
+  padding: 4px;
+  background: linear-gradient(135deg, rgba(248, 250, 252, 0.3), rgba(59, 130, 246, 0.6));
+}
+
+.hero-card__avatar {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
+  border: 4px solid rgba(15, 23, 42, 0.4);
+}
+
+.hero-card__identity h1 {
+  font-size: clamp(1.8rem, 3vw, 2.4rem);
+  margin: 0.2rem 0;
+  font-weight: 700;
+}
+
+.hero-card__meta-row {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.hero-card__role-pill {
+  padding: 0.35rem 1rem;
+  border-radius: 999px;
+  background: rgba(248, 250, 252, 0.16);
+  border: 1px solid rgba(248, 250, 252, 0.35);
+  font-weight: 600;
+}
+
+.hero-card__email {
+  color: rgba(248, 250, 252, 0.75);
+}
+
+.hero-card__company {
+  flex: 1;
+  margin-left: 1.5rem;
+}
+
+.hero-card__company-meta {
+  margin: 0.35rem 0 0;
+  color: rgba(248, 250, 252, 0.7);
+}
+
+.hero-card__status {
+  min-width: 220px;
+  max-width: 320px;
+  background: rgba(15, 23, 42, 0.25);
+  border-radius: var(--radius-xl);
+  padding: 1.25rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.hero-card__status-label {
+  margin: 0;
+  color: rgba(248, 250, 252, 0.75);
+  font-size: 0.9rem;
+}
+
+.hero-card__status-value {
+  margin: 0;
+  font-size: 2rem;
+  font-weight: 700;
+}
+
+.hero-card__progress {
+  position: relative;
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(248, 250, 252, 0.25);
+  overflow: hidden;
+}
+
+.hero-card__progress-bar {
+  height: 100%;
+  background: linear-gradient(120deg, #34d399, #a3e635);
+  width: var(--progress, 40%);
+}
+
+.profile__form-shell {
+  padding: 2.25rem;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: linear-gradient(180deg, #ffffff, #f8fafc);
+}
+
+.form-shell__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.5rem;
+}
+
+.form-shell__header h2 {
+  margin: 0.25rem 0 0;
+}
+
+.form-shell__header p {
+  margin: 0;
+  color: var(--clr-muted);
+  max-width: 360px;
+}
+
+.profile__tabs {
+  display: inline-flex;
+  padding: 0.25rem;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.05);
+  margin-bottom: 1rem;
+  gap: 0.35rem;
+}
+
+.profile__tab {
+  border: none;
+  background: transparent;
+  padding: 0.45rem 1.1rem;
+  border-radius: 999px;
+  font-weight: 600;
+  color: var(--clr-muted);
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.profile__tab.is-active {
+  background: #fff;
+  color: #0f172a;
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.1);
+}
+
+.profile__panel-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.panel-card {
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  border-radius: var(--radius-xl);
+  padding: 1.75rem;
+  background: #fff;
+  box-shadow: 0 20px 45px rgba(15, 23, 42, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.panel-card header h3 {
+  margin: 0.25rem 0 0;
+}
+
+.panel-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1.25rem;
+}
+
+.panel-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.panel-field label {
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.panel-field textarea {
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  padding: 0.95rem 1.1rem;
+  resize: vertical;
+  font-family: inherit;
+  min-height: 130px;
+}
+
+.panel-field small {
+  color: var(--clr-muted);
+}
+
+.panel-field :deep(input) {
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  padding: 0.85rem 1rem;
+  font-size: 1rem;
+}
+
+.panel-field :deep(input:focus),
+.panel-field textarea:focus {
+  border-color: rgba(37, 99, 235, 0.8);
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
+}
+
+.panel-field.has-error small {
+  color: var(--clr-danger, #dc2626);
+}
+
+.panel-field.has-error :deep(input),
+.panel-field.has-error textarea {
+  border-color: var(--clr-danger, #dc2626);
+}
+
+.panel-field.has-error :deep(input:focus),
+.panel-field.has-error textarea:focus {
+  box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.1);
+}
+
+.photo-card {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: 1.75rem;
+  align-items: center;
+}
+
+.photo-card__preview {
+  width: 180px;
+  height: 180px;
+  border-radius: 999px;
+  object-fit: cover;
+  border: 4px solid rgba(15, 23, 42, 0.08);
+  box-shadow: 0 20px 45px rgba(15, 23, 42, 0.15);
+}
+
+.panel-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.skills-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.skills-chips span {
+  padding: 0.35rem 0.85rem;
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.08);
+  color: var(--clr-primary);
+  font-weight: 600;
+}
+
+.section-kicker {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--clr-primary);
+}
+
+.profile__form-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.feedback {
+  font-weight: 600;
+}
+
+.feedback.success {
+  color: var(--clr-success, #15803d);
+}
+
+.feedback.error {
+  color: var(--clr-danger, #dc2626);
+}
+
+.profile__empty-card {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+@media (max-width: 960px) {
+  .hero-card__inner {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .hero-card__identity {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .photo-card {
+    grid-template-columns: 1fr;
+    text-align: left;
+  }
+}
+
+@media (max-width: 640px) {
+  .profile__hero-card,
+  .profile__form-shell {
+    padding: 1.5rem;
+  }
+
+  .hero-card__avatar-ring {
+    width: 120px;
+    height: 120px;
+  }
+
+  .photo-card__preview {
+    width: 140px;
+    height: 140px;
+  }
+}
+</style>

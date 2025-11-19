@@ -1,0 +1,30 @@
+import express from 'express'
+import cors from 'cors'
+import helmet from 'helmet'
+import morgan from 'morgan'
+import router from './routes/index.js'
+import { notFound } from './middleware/notFound.js'
+import { errorHandler } from './middleware/errorHandler.js'
+import { sanitizeRequest } from './middleware/sanitizeRequest.js'
+
+const app = express()
+
+app.use(helmet())
+app.use(cors({
+  origin: process.env.CLIENT_ORIGIN?.split(',') || '*',
+  credentials: true
+}))
+app.use(express.json({ limit: '1mb' }))
+app.use(sanitizeRequest)
+app.use(morgan('dev'))
+
+app.get('/', (req, res) => {
+  res.json({ message: 'Bienvenido a la API de JobPortal' })
+})
+
+app.use('/api', router)
+
+app.use(notFound)
+app.use(errorHandler)
+
+export default app

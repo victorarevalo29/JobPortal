@@ -1,0 +1,101 @@
+<template>
+  <button
+    :class="['base-button', `base-button--${variant}`, `base-button--${size}`, { 'is-loading': isLoading }]"
+    :disabled="disabled || isLoading"
+  >
+    <span v-if="isLoading" class="base-button__spinner" aria-hidden="true" />
+    <slot />
+  </button>
+</template>
+
+<script setup>
+defineProps({
+  variant: {
+    type: String,
+    default: 'primary'
+  },
+  size: {
+    type: String,
+    default: 'md'
+  },
+  disabled: Boolean,
+  isLoading: Boolean
+})
+</script>
+
+<style scoped>
+.base-button {
+  border: none;
+  border-radius: 999px;
+  padding: 0.9rem 1.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 150ms ease, box-shadow 150ms ease, background 150ms ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  font-family: var(--font-heading);
+  letter-spacing: 0.01em;
+  box-shadow: 0 20px 40px rgba(37, 99, 235, 0.15);
+}
+
+.base-button:hover:not(:disabled) {
+  transform: translateY(-3px);
+}
+
+.base-button:focus-visible {
+  outline: 3px solid rgba(14, 165, 233, 0.4);
+  outline-offset: 2px;
+}
+
+.base-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.base-button--primary {
+  background: linear-gradient(120deg, var(--clr-primary), var(--clr-accent));
+  color: #fff;
+}
+
+.base-button--secondary {
+  background: var(--clr-surface);
+  border: 1px solid rgba(37, 99, 235, 0.25);
+  color: var(--clr-primary);
+  box-shadow: 0 12px 30px rgba(37, 99, 235, 0.08);
+}
+
+.base-button--ghost {
+  background: transparent;
+  color: var(--clr-text);
+  border: 1px solid rgba(15, 23, 42, 0.15);
+  box-shadow: none;
+}
+
+.base-button--sm {
+  padding: 0.55rem 1.2rem;
+  font-size: 0.85rem;
+}
+
+.base-button--lg {
+  padding: 1.1rem 2.3rem;
+  font-size: 1rem;
+}
+
+.base-button__spinner {
+  width: 1rem;
+  height: 1rem;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.6);
+  border-top-color: #fff;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+</style>

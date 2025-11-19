@@ -1,0 +1,103 @@
+import { registerUser, loginUser, logoutUser } from '../services/authService.js'
+import { getUserById, updateUserById } from '../services/userService.js'
+import { createCompany, updateCompanyById } from '../services/companyService.js'
+import { asyncHandler } from '../utils/asyncHandler.js'
+import { sendCreated, sendSuccess } from '../utils/response.js'
+
+/**
+ * POST /api/auth/register
+ * Crea un usuario y devuelve un token listo para usar.
+ */
+export const register = asyncHandler(async (req, res) => {
+  const result = await registerUser(req.body)
+  return sendCreated(res, {
+    message: 'Registro exitoso',
+    data: result
+  })
+})
+
+/**
+ * POST /api/auth/login
+ * Autentica credenciales y retorna JWT.
+ */
+export const login = asyncHandler(async (req, res) => {
+  const result = await loginUser(req.body)
+  return sendSuccess(res, {
+    message: 'Login correcto',
+    data: result
+  })
+})
+
+/**
+ * POST /api/auth/logout
+ * Invalida el token actual almacenándolo en blacklist.
+ */
+export const logout = asyncHandler(async (req, res) => {
+  await logoutUser({ jti: req.user.jti, exp: req.user.exp })
+  return sendSuccess(res, {
+    message: 'Sesión cerrada',
+    data: null
+  })
+})
+
+/**
+ * GET /api/auth/profile
+ * Devuelve el perfil del usuario autenticado.
+ */
+export const currentProfile = asyncHandler(async (req, res) => {
+  const user = await getUserById(req.user.id)
+  return sendSuccess(res, {
+    message: 'Perfil recuperado',
+    data: user
+  })
+})
+
+/**
+ * PATCH /api/auth/profile
+ * Actualiza campos del usuario autenticado.
+ */
+export const updateProfile = asyncHandler(async (req, res) => {
+  const editableFields = ['name', 'email', 'bio', 'photoUrl', 'resumeUrl', 'skills']
+  const payload = {}
+
+  editableFields.forEach((field) => {
+    if (typeof req.body[field] !== 'undefined') {
+      payload[field] = req.body[field]
+    }
+  })
+
+  const canEditCompany = req.user.role === 'employer'
+  const companyPayload = canEditCompany && typeof req.body.company === 'object' ? req.body.company : null
+  const companyFields = ['name', 'description', 'location', 'industry', 'logoUrl']
+  let processedCompany = null
+
+  if (companyPayload) {
+    processedCompany = companyFields.reduce((acc, field) => {
+      if (typeof companyPayload[field] !== 'undefined') {
+        acc[field] = companyPayload[field]
+      }
+      return acc
+    }, {})
+  }
+
+  const currentUser = await getUserById(req.user.id)
+
+  if (processedCompany && Object.keys(processedCompany).length) {
+    if (currentUser.company) {
+      await updateCompanyById(currentUser.company.id || currentUser.company._id, processedCompany)
+    } else {
+      const company = await createCompany(processedCompany)
+      payload.company = company._id
+    }
+  }
+
+  if (Object.keys(payload).length) {
+    await updateUserById(req.user.id, payload)
+  }
+
+  const refreshedUser = await getUserById(req.user.id)
+  return sendSuccess(res, {
+    message: 'Perfil actualizado',
+    data: refreshedUser
+  })
+})

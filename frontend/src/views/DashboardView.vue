@@ -1,0 +1,649 @@
+<template>
+  <section v-if="authStore.user" class="dashboard-view">
+    <header class="dashboard-view__hero">
+      <div class="dashboard-view__hero-content">
+        <p class="eyebrow">Hola, {{ greetingName }}</p>
+        <h1>{{ heroHeadline }}</h1>
+        <p>{{ heroCopy }}</p>
+        <div class="dashboard-view__actions">
+          <BaseButton size="sm" @click="goToPrimaryAction">{{ primaryActionLabel }}</BaseButton>
+          <button class="link-button" type="button" @click="goToSupport">Contactar soporte</button>
+        </div>
+      </div>
+      <div class="dashboard-view__hero-cards">
+        <article v-for="stat in heroStats" :key="stat.label" class="hero-card fade-up">
+          <p class="hero-card__label">{{ stat.label }}</p>
+          <strong class="hero-card__value">{{ stat.value }}</strong>
+          <small>{{ stat.meta }}</small>
+        </article>
+      </div>
+    </header>
+
+    <section v-if="role !== 'employer'" class="dashboard-view__stats">
+      <article v-for="stat in talentStats" :key="stat.label" class="stat-card">
+        <p class="stat-card__label">{{ stat.label }}</p>
+        <strong class="stat-card__value">{{ stat.value }}</strong>
+        <small>{{ stat.meta }}</small>
+      </article>
+    </section>
+
+    <section class="dashboard-view__insights">
+      <article
+        v-for="card in insightCards"
+        :key="card.title"
+        class="insight-card"
+        :style="{ '--accent': card.accent }"
+      >
+        <div>
+          <p class="eyebrow">{{ card.badge }}</p>
+          <h3>{{ card.title }}</h3>
+          <p>{{ card.copy }}</p>
+        </div>
+        <button class="pill-link" type="button" @click="router.push(card.cta.to)">{{ card.cta.label }}</button>
+      </article>
+    </section>
+
+    <section class="dashboard-view__profile glass-surface">
+      <div>
+        <p class="eyebrow">Tu perfil</p>
+        <h3>{{ profileHeadline }}</h3>
+        <p>{{ profileCopy }}</p>
+      </div>
+      <div class="profile-card">
+        <div>
+          <strong>{{ profileSummary.name }}</strong>
+          <p>{{ profileSummary.email }}</p>
+          <span class="profile-chip">{{ profileSummary.roleLabel }}</span>
+        </div>
+        <div class="profile-card__actions">
+          <RouterLink class="pill-link" to="/profile">Ver perfil completo</RouterLink>
+          <BaseButton variant="ghost" size="sm" @click="goToProfile">Editar perfil</BaseButton>
+        </div>
+      </div>
+    </section>
+
+    <section v-if="role !== 'employer'" class="dashboard-view__widgets">
+      <article class="widget-card">
+        <div>
+          <p class="eyebrow">Editar perfil</p>
+          <h3>Tu perfil está al {{ profileCompleteness }}%</h3>
+          <p>Completa bio, CV y skills para destacar en los próximos filtros.</p>
+        </div>
+        <div class="widget-card__progress" role="presentation">
+          <div class="widget-card__progress-bar" :style="{ '--progress': profileCompleteness + '%' }"></div>
+          <small>{{ profileCompleteness }}% completo</small>
+        </div>
+        <BaseButton variant="ghost" size="sm" @click="goToProfile">Actualizar ahora</BaseButton>
+      </article>
+
+      <article class="widget-card widget-card--apps">
+        <div>
+          <p class="eyebrow">Ver mis aplicaciones</p>
+          <h3>{{ applicationSummary.headline }}</h3>
+          <p>{{ applicationSummary.copy }}</p>
+        </div>
+        <dl class="widget-card__stats">
+          <div>
+            <dt>Enviadas</dt>
+            <dd>{{ applicationSummary.sent }}</dd>
+          </div>
+          <div>
+            <dt>Aceptadas</dt>
+            <dd>{{ applicationSummary.accepted }}</dd>
+          </div>
+          <div>
+            <dt>En revisión</dt>
+            <dd>{{ applicationSummary.reviewing }}</dd>
+          </div>
+        </dl>
+        <BaseButton size="sm" @click="goToApplications">Abrir panel</BaseButton>
+      </article>
+    </section>
+
+    <section v-if="role !== 'employer'" class="dashboard-view__body glass-surface">
+      <TalentDashboard />
+    </section>
+
+    <section v-else class="dashboard-view__body glass-surface">
+      <div class="dashboard-tabs" role="tablist">
+        <button
+          v-for="tab in employerTabs"
+          :key="tab.id"
+          :class="['dashboard-tab', { 'dashboard-tab--active': tab.id === activeEmployerTab }]"
+          type="button"
+          role="tab"
+          @click="activeEmployerTab = tab.id"
+        >
+          {{ tab.label }}
+        </button>
+      </div>
+      <component :is="activeEmployerComponent" :key="activeEmployerTab" />
+    </section>
+  </section>
+
+  <BaseCard v-else class="dashboard-view__empty">
+    <template #title>Sin sesión activa</template>
+    <p>Vuelve a iniciar sesión para acceder a tu panel personalizado.</p>
+    <BaseButton size="sm" @click="router.push('/login')">Ir a iniciar sesión</BaseButton>
+  </BaseCard>
+</template>
+
+<script setup>
+import { computed, ref } from 'vue'
+import { RouterLink, useRouter } from 'vue-router'
+import BaseButton from '@/components/BaseButton.vue'
+import BaseCard from '@/components/BaseCard.vue'
+import { useAuthStore } from '@/stores/authStore'
+import TalentDashboard from '@/views/dashboard/TalentDashboard.vue'
+import EmployerOverview from '@/views/employer/Dashboard.vue'
+import ManageJobs from '@/views/employer/ManageJobs.vue'
+import EmployerApplicants from '@/views/employer/Applicants.vue'
+
+const router = useRouter()
+const authStore = useAuthStore()
+
+const role = computed(() => {
+  const value = authStore.user?.role || 'talent'
+  return value === 'user' ? 'talent' : value
+})
+const greetingName = computed(() => authStore.user?.name || authStore.user?.email?.split('@')[0] || 'Comunidad')
+const heroHeadline = computed(() =>
+  role.value === 'employer' ? 'Administra tus vacantes y postulaciones' : 'Explora retos, recursos y comunidad'
+)
+const heroCopy = computed(() =>
+  role.value === 'employer'
+    ? 'Centraliza vacantes, revisa postulaciones y comparte contexto con tu equipo.'
+    : 'Organiza tu plan de aprendizaje, recibe recomendaciones y participa en la comunidad JobPortal.'
+)
+
+const profileHeadline = computed(() =>
+  role.value === 'employer'
+    ? 'Mantén actualizado el perfil de tu organización'
+    : 'Haz que tu perfil cuente tu historia profesional'
+)
+
+const profileCopy = computed(() =>
+  role.value === 'employer'
+    ? 'Comparte bio, links y contexto para acelerar el match con talento.'
+    : 'Refuerza tu bio, habilidades y enlaces clave antes de aplicar.'
+)
+
+const profileSummary = computed(() => ({
+  name: authStore.user?.name || 'Perfil sin nombre',
+  email: authStore.user?.email || 'Agrega un correo',
+  roleLabel: role.value === 'employer' ? 'Employer' : 'Talento'
+}))
+
+const formatNumber = (value) =>
+  new Intl.NumberFormat('es-MX', { maximumFractionDigits: 0 }).format(Number.isFinite(value) ? value : 0)
+
+const resolveAccepted = (stats) => {
+  const explicit = Number(stats?.applicationsAccepted ?? stats?.acceptedApplications)
+  if (Number.isFinite(explicit) && explicit >= 0) {
+    return explicit
+  }
+  const sent = Number(stats?.applicationsSent)
+  if (Number.isFinite(sent) && sent > 0) {
+    return Math.max(0, Math.round(sent * 0.35))
+  }
+  return 0
+}
+
+const talentStats = computed(() => {
+  if (role.value === 'employer') return []
+  const stats = authStore.user?.stats || {}
+  const sent = Number(stats.applicationsSent) || 0
+  const accepted = resolveAccepted(stats)
+  const views = Number(stats.profileViews) || 0
+
+  return [
+    {
+      label: 'Aplicaciones enviadas',
+      value: formatNumber(sent),
+      meta: 'Últimos 30 días'
+    },
+    {
+      label: 'Aplicaciones aceptadas',
+      value: formatNumber(Math.min(accepted, sent)),
+      meta: accepted ? 'Con entrevistas agendadas' : 'Aún sin confirmaciones'
+    },
+    {
+      label: 'Visitas al perfil',
+      value: formatNumber(views),
+      meta: 'Semana actual'
+    }
+  ]
+})
+
+const profileCompleteness = computed(() => {
+  if (role.value === 'employer') return 100
+  const fields = ['bio', 'resumeUrl', 'skills']
+  const filled = fields.reduce((acc, field) => {
+    const value = authStore.user?.[field]
+    if (Array.isArray(value)) {
+      return acc + (value.length ? 1 : 0)
+    }
+    return acc + (value ? 1 : 0)
+  }, 0)
+  return Math.round((filled / fields.length) * 100) || 0
+})
+
+const applicationSummary = computed(() => {
+  if (role.value === 'employer') {
+    return { headline: '', copy: '', sent: 0, accepted: 0, reviewing: 0 }
+  }
+  const stats = authStore.user?.stats || {}
+  const sent = Number(stats.applicationsSent) || 0
+  const accepted = Math.min(resolveAccepted(stats), sent)
+  const reviewing = Math.max(sent - accepted, 0)
+  const headline = reviewing ? `${reviewing} aplicaciones en revisión` : 'Sin revisiones pendientes'
+  const copy = sent
+    ? 'Seguimos notificando a las empresas. Puedes actualizar tu info cuando quieras.'
+    : 'Envía tu primera aplicación para desbloquear seguimiento y recordatorios.'
+
+  return {
+    headline,
+    copy,
+    sent: formatNumber(sent),
+    accepted: formatNumber(accepted),
+    reviewing: formatNumber(reviewing)
+  }
+})
+
+const heroStats = computed(() =>
+  role.value === 'employer'
+    ? [
+        { label: 'Vacantes activas', value: '08', meta: 'En vivo esta semana' },
+        { label: 'Postulaciones', value: '42', meta: 'Últimos 14 días' },
+        { label: 'Tiempo a contratar', value: '18 d', meta: 'Promedio ciclo' }
+      ]
+    : [
+        { label: 'Retos completados', value: '12', meta: 'Historial JobPortal' },
+        { label: 'Match cultural', value: '92%', meta: 'Promedio de tus cohorts' },
+        { label: 'Mentorías', value: '05', meta: 'Semana actual' }
+      ]
+)
+
+const insightCards = computed(() =>
+  role.value === 'employer'
+    ? [
+        {
+          badge: 'Panel employer',
+          title: 'Refina tu storytelling de vacantes',
+          copy: 'Comparte contexto multimedia y asegura feedback de talento en menos de 48h.',
+          accent: 'rgba(59,130,246,0.25)',
+          cta: { label: 'Ir a vacantes', to: '/employer/jobs' }
+        },
+        {
+          badge: 'Pipeline',
+          title: 'Prioriza entrevistas clave',
+          copy: 'Clasifica postulaciones con etiquetas inteligentes y notas en tiempo real.',
+          accent: 'rgba(14,165,233,0.25)',
+          cta: { label: 'Ver postulaciones', to: '/employer/applicants' }
+        }
+      ]
+    : [
+        {
+          badge: 'Plan de carrera',
+          title: 'Define tus próximos experimentos',
+          copy: 'Explora retos técnicos y recursos verificados para fortalecer tu portafolio.',
+          accent: 'rgba(59,130,246,0.25)',
+          cta: { label: 'Explorar recursos', to: '/resources' }
+        },
+        {
+          badge: 'Comunidad',
+          title: 'Comparte aprendizajes en foros',
+          copy: 'Suma tus hallazgos en debates activos y recibe retroalimentación curada.',
+          accent: 'rgba(124,58,237,0.25)',
+          cta: { label: 'Ir a foros', to: '/forum' }
+        }
+      ]
+)
+
+const primaryActionLabel = computed(() => (role.value === 'employer' ? 'Publicar vacante' : 'Buscar vacantes'))
+const primaryActionRoute = computed(() => (role.value === 'employer' ? '/employer/jobs' : '/jobs'))
+
+const employerTabs = [
+  { id: 'overview', label: 'Resumen', component: EmployerOverview },
+  { id: 'jobs', label: 'Vacantes', component: ManageJobs },
+  { id: 'applicants', label: 'Postulaciones', component: EmployerApplicants }
+]
+
+const activeEmployerTab = ref('overview')
+const activeEmployerComponent = computed(() => {
+  return employerTabs.find((tab) => tab.id === activeEmployerTab.value)?.component || EmployerOverview
+})
+
+const goToPrimaryAction = () => {
+  router.push(primaryActionRoute.value)
+}
+
+const goToSupport = () => {
+  window.open('https://cal.com/jobportal/support', '_blank')
+}
+
+const goToProfile = () => {
+  router.push('/profile')
+}
+
+const goToApplications = () => {
+  router.push({ name: 'jobs-search', query: { view: 'applications' } })
+}
+</script>
+
+<style scoped>
+.dashboard-view {
+  display: flex;
+  flex-direction: column;
+  gap: 2.5rem;
+  padding: 3rem 0 4rem;
+}
+
+.dashboard-view__stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1.25rem;
+}
+
+.stat-card {
+  padding: 1.5rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(226, 241, 255, 0.9));
+  box-shadow: 0 20px 45px rgba(15, 23, 42, 0.08);
+}
+
+.stat-card__label {
+  text-transform: uppercase;
+  letter-spacing: 0.25em;
+  font-size: 0.7rem;
+  color: var(--clr-muted);
+}
+
+.stat-card__value {
+  font-size: 2.3rem;
+  margin: 0.4rem 0;
+  display: block;
+}
+
+.dashboard-view__hero {
+  position: relative;
+  border-radius: var(--radius-xl);
+  padding: 3rem;
+  background: linear-gradient(135deg, #111c44, #1c3faa 70%);
+  color: #f8fafc;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 2rem;
+  overflow: hidden;
+}
+
+.dashboard-view__hero::after {
+  content: '';
+  position: absolute;
+  inset: -40% auto auto 45%;
+  width: 320px;
+  height: 320px;
+  background: radial-gradient(circle, rgba(14, 165, 233, 0.45), transparent 70%);
+  opacity: 0.7;
+  filter: blur(2px);
+  animation: float 12s ease-in-out infinite alternate;
+}
+
+.dashboard-view__hero-content {
+  position: relative;
+  z-index: 1;
+}
+
+.dashboard-view__hero h1 {
+  margin: 0.75rem 0 1rem;
+  font-size: clamp(2.1rem, 3vw, 3rem);
+}
+
+.dashboard-view__hero p {
+  max-width: 52ch;
+}
+
+.dashboard-view__actions {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  margin-top: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.dashboard-view__hero-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+  position: relative;
+  z-index: 1;
+}
+
+.hero-card {
+  padding: 1.4rem;
+  border-radius: var(--radius-lg);
+  background: rgba(15, 23, 42, 0.35);
+  border: 1px solid rgba(248, 250, 252, 0.12);
+  backdrop-filter: blur(12px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.hero-card__label {
+  text-transform: uppercase;
+  letter-spacing: 0.25em;
+  font-size: 0.68rem;
+  opacity: 0.8;
+}
+
+.hero-card__value {
+  font-size: 2.4rem;
+  display: block;
+  margin: 0.4rem 0;
+}
+
+.dashboard-view__insights {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1.5rem;
+}
+
+.insight-card {
+  border-radius: var(--radius-lg);
+  padding: 1.8rem;
+  background: var(--clr-surface);
+  box-shadow: 0 25px 60px rgba(13, 35, 80, 0.08);
+  border: 1px solid rgba(15, 23, 42, 0.05);
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  position: relative;
+  overflow: hidden;
+}
+
+.insight-card::after {
+  content: '';
+  position: absolute;
+  inset: auto -30% -60% auto;
+  width: 220px;
+  height: 220px;
+  background: radial-gradient(circle, var(--accent), transparent 65%);
+  opacity: 0.75;
+}
+
+.insight-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+.pill-link {
+  align-self: flex-start;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 23, 42, 0.15);
+  padding: 0.5rem 1.4rem;
+  background: transparent;
+  font-weight: 600;
+  color: var(--clr-primary);
+  cursor: pointer;
+}
+
+.dashboard-view__body {
+  border-radius: var(--radius-xl);
+  padding: 2.5rem;
+  box-shadow: var(--shadow-card);
+}
+
+.dashboard-view__profile {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1.5rem;
+  align-items: center;
+}
+
+.profile-card {
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.profile-card p {
+  margin: 0.15rem 0 0;
+  color: var(--clr-muted);
+}
+
+.profile-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 0.25rem 0.85rem;
+  background: rgba(37, 99, 235, 0.12);
+  color: var(--clr-primary);
+  font-weight: 600;
+  margin-top: 0.6rem;
+}
+
+.profile-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.dashboard-view__widgets {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1.5rem;
+}
+
+.widget-card {
+  border-radius: var(--radius-xl);
+  padding: 2rem;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: var(--clr-surface);
+  box-shadow: var(--shadow-card);
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.widget-card__progress {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.widget-card__progress-bar {
+  height: 0.5rem;
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.18);
+  position: relative;
+}
+
+.widget-card__progress-bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: var(--progress, 0%);
+  border-radius: 999px;
+  background: linear-gradient(90deg, #2563eb, #0ea5e9);
+}
+
+.widget-card__stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+}
+
+.widget-card__stats dt {
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--clr-muted);
+}
+
+.widget-card__stats dd {
+  margin: 0.2rem 0 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.widget-card--apps {
+  background: linear-gradient(135deg, rgba(241, 248, 255, 0.95), rgba(219, 234, 254, 0.95));
+}
+
+.dashboard-tabs {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.5rem;
+}
+
+.dashboard-tab {
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 999px;
+  padding: 0.45rem 1.3rem;
+  background: transparent;
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--clr-muted);
+}
+
+.dashboard-tab--active {
+  background: rgba(37, 99, 235, 0.12);
+  color: var(--clr-primary);
+  border-color: rgba(37, 99, 235, 0.3);
+}
+
+.eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.3em;
+  font-size: 0.75rem;
+  color: var(--clr-accent);
+  font-weight: 600;
+}
+
+.link-button {
+  border: none;
+  background: none;
+  color: var(--clr-primary);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.dashboard-view__empty {
+  margin: 4rem auto;
+  max-width: 520px;
+  text-align: center;
+}
+
+@media (max-width: 768px) {
+  .dashboard-view__body {
+    padding: 1.75rem;
+  }
+}
+</style>

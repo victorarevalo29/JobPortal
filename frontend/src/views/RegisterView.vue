@@ -1,0 +1,356 @@
+<template>
+  <section class="auth auth--register">
+    <div class="auth__surface">
+      <div class="auth__side">
+        <span class="auth__pill">Comunidad</span>
+        <h2>Construye tu espacio de talento con datos reales.</h2>
+        <ul>
+          <li>Analiza vacantes y postulaciones en tiempo real.</li>
+          <li>Comparte recursos y foros curados para tu cohorte.</li>
+          <li>Escala tu marca empleadora con perfiles auténticos.</li>
+        </ul>
+      </div>
+      <BaseCard class="auth__card">
+        <div class="auth__header">
+          <p class="auth__eyebrow">Comencemos</p>
+          <h1>Crea tu cuenta JobPortal</h1>
+          <p class="auth__hint">Elige si quieres explorar oportunidades o publicar vacantes.</p>
+        </div>
+
+        <form class="auth__form" @submit.prevent="handleSubmit">
+          <BaseInput v-model="form.name" label="Nombre completo" placeholder="Tu nombre" />
+          <BaseInput v-model="form.email" type="email" label="Correo" placeholder="tusitio@uni.edu" />
+          <BaseInput v-model="form.password" type="password" label="Contraseña" placeholder="••••••••" />
+          <label class="auth__select">
+            <span>Rol</span>
+            <select v-model="form.role">
+              <option value="user">Busco oportunidades</option>
+              <option value="employer">Soy employer</option>
+            </select>
+          </label>
+          <transition name="fade">
+            <div v-if="isEmployer" class="auth__company">
+              <div class="auth__company-header">
+                <div>
+                  <p>Completa cómo se presenta tu organización.</p>
+                  <h3>Información de la empresa</h3>
+                </div>
+                <span class="auth__company-pill">Visible en vacantes</span>
+              </div>
+              <div class="auth__company-grid">
+                <BaseInput v-model="form.company.name" label="Nombre" placeholder="Ej. Nebula Kitchen" />
+                <BaseInput v-model="form.company.industry" label="Industria" placeholder="Foodtech" />
+                <BaseInput v-model="form.company.location" label="Ubicación" placeholder="Ciudad, País" />
+                <BaseInput
+                  v-model="form.company.logoUrl"
+                  label="Logo (URL)"
+                  placeholder="https://uploads.jobportal.dev/logo.png"
+                />
+              </div>
+              <label class="auth__textarea">
+                <span>Descripción corta</span>
+                <textarea
+                  v-model="form.company.description"
+                  rows="3"
+                  maxlength="1500"
+                  placeholder="Misión, rituales o stack que hacen única a tu empresa"
+                ></textarea>
+              </label>
+            </div>
+          </transition>
+          <p v-if="errorMessage" class="auth__error">{{ errorMessage }}</p>
+          <BaseButton type="submit" size="lg" :is-loading="authStore.loading">Crear cuenta</BaseButton>
+        </form>
+
+        <p class="auth__alt">
+          ¿Ya tienes cuenta?
+          <button type="button" class="auth__link" @click="goToLogin">Inicia sesión</button>
+        </p>
+      </BaseCard>
+    </div>
+  </section>
+</template>
+
+<script setup>
+import { reactive, ref, computed } from 'vue'
+import { useRouter } from 'vue-router'
+import BaseCard from '@/components/BaseCard.vue'
+import BaseInput from '@/components/BaseInput.vue'
+import BaseButton from '@/components/BaseButton.vue'
+import { useAuthStore } from '@/stores/authStore'
+
+const authStore = useAuthStore()
+const router = useRouter()
+
+const form = reactive({
+  name: '',
+  email: '',
+  password: '',
+  role: 'user',
+  company: {
+    name: '',
+    industry: '',
+    location: '',
+    description: '',
+    logoUrl: ''
+  }
+})
+
+const errorMessage = ref('')
+const isEmployer = computed(() => form.role === 'employer')
+
+const validate = () => {
+  if (!form.name || !form.email || !form.password) {
+    errorMessage.value = 'Completa los campos obligatorios'
+    return false
+  }
+  if (isEmployer.value && !form.company.name.trim()) {
+    errorMessage.value = 'Comparte el nombre de tu empresa'
+    return false
+  }
+  errorMessage.value = ''
+  return true
+}
+
+const handleSubmit = async () => {
+  if (!validate()) return
+  try {
+    const payload = {
+      name: form.name.trim(),
+      email: form.email.trim(),
+      password: form.password,
+      role: form.role
+    }
+
+    if (isEmployer.value) {
+      payload.company = {
+        name: form.company.name.trim(),
+        industry: form.company.industry.trim() || undefined,
+        location: form.company.location.trim() || undefined,
+        description: form.company.description.trim() || undefined,
+        logoUrl: form.company.logoUrl.trim() || undefined
+      }
+    }
+
+    await authStore.register(payload)
+    router.push('/dashboard')
+  } catch (error) {
+    errorMessage.value = error.message || 'No pudimos crear tu cuenta'
+  }
+}
+
+const goToLogin = () => {
+  router.push('/login')
+}
+</script>
+
+<style scoped>
+.auth {
+  min-height: calc(100vh - 120px);
+  padding: 3rem 1.5rem 4rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 20% 20%, rgba(16, 185, 129, 0.08), transparent 45%),
+    radial-gradient(circle at 80% 0%, rgba(59, 130, 246, 0.16), transparent 55%), #f6f8fb;
+}
+
+.auth__surface {
+  width: min(100%, 1080px);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 2.5rem;
+  align-items: stretch;
+}
+
+.auth__side {
+  border-radius: var(--radius-xl);
+  padding: 3rem;
+  background: linear-gradient(135deg, #0f172a, #14532d);
+  color: #f8fafc;
+  box-shadow: 0 30px 50px rgba(15, 23, 42, 0.4);
+}
+
+.auth__side h2 {
+  font-size: clamp(1.8rem, 2.6vw, 2.6rem);
+  margin: 1rem 0 1.25rem;
+}
+
+.auth__side ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.auth__side li {
+  position: relative;
+  padding-left: 1.5rem;
+  color: rgba(248, 250, 252, 0.85);
+}
+
+.auth__side li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.55rem;
+  width: 0.65rem;
+  height: 0.65rem;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #34d399, #0ea5e9);
+}
+
+.auth__pill {
+  display: inline-flex;
+  border: 1px solid rgba(248, 250, 252, 0.35);
+  padding: 0.3rem 1rem;
+  border-radius: 999px;
+  letter-spacing: 0.25em;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+}
+
+.auth__card {
+  width: min(480px, 100%);
+  padding: 2.9rem;
+  border-radius: var(--radius-xl);
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  box-shadow: 0 25px 50px rgba(15, 23, 42, 0.12);
+}
+
+.auth__header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.auth__eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.35em;
+  font-size: 0.72rem;
+  color: #0ea5e9;
+}
+
+.auth__hint {
+  color: #475569;
+  margin: 0;
+}
+
+.auth__form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+  margin-top: 2rem;
+}
+
+.auth__select {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.auth__select select {
+  border-radius: 0.85rem;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  padding: 0.85rem 1rem;
+  font-size: 0.95rem;
+  background: #fff;
+}
+
+.auth__error {
+  color: #dc2626;
+  font-size: 0.92rem;
+  margin: 0;
+}
+
+.auth__company {
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: var(--radius-xl);
+  padding: 1.5rem;
+  background: #f8fafc;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.auth__company-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.auth__company-header h3 {
+  margin: 0.2rem 0 0;
+}
+
+.auth__company-pill {
+  font-size: 0.78rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #0f172a;
+}
+
+.auth__company-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+.auth__textarea {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.auth__textarea textarea {
+  border-radius: 0.85rem;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  padding: 0.85rem 1rem;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.auth__alt {
+  margin-top: 1.75rem;
+  text-align: center;
+  color: #475569;
+}
+
+.auth__link {
+  border: none;
+  background: none;
+  color: #1d4ed8;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.25s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+@media (max-width: 960px) {
+  .auth__surface {
+    grid-template-columns: 1fr;
+  }
+
+  .auth__side {
+    order: 2;
+    padding: 2.4rem;
+  }
+}
+</style>

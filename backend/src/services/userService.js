@@ -1,0 +1,51 @@
+import bcrypt from 'bcryptjs'
+import { User } from '../models/User.js'
+import { AppError } from '../utils/AppError.js'
+
+const SALT_ROUNDS = 10
+
+const hashPasswordIfNeeded = async (payload) => {
+  if (payload.password) {
+    payload.passwordHash = await bcrypt.hash(payload.password, SALT_ROUNDS)
+    delete payload.password
+  }
+
+  return payload
+}
+
+export const createUser = async (payload) => {
+  await hashPasswordIfNeeded(payload)
+  const user = await User.create(payload)
+  await user.populate('company')
+  return user.toJSON()
+}
+
+export const listUsers = async () => {
+  const users = await User.find().sort('-createdAt')
+  return users
+}
+
+export const getUserById = async (id) => {
+  const user = await User.findById(id).populate('company')
+  if (!user) {
+    throw new AppError('Usuario no encontrado', 404)
+  }
+  return user
+}
+
+export const updateUserById = async (id, payload) => {
+  await hashPasswordIfNeeded(payload)
+  const user = await User.findByIdAndUpdate(id, payload, { new: true, runValidators: true }).populate('company')
+  if (!user) {
+    throw new AppError('Usuario no encontrado', 404)
+  }
+  return user
+}
+
+export const deleteUserById = async (id) => {
+  const result = await User.findByIdAndDelete(id)
+  if (!result) {
+    throw new AppError('Usuario no encontrado', 404)
+  }
+  return result
+}
