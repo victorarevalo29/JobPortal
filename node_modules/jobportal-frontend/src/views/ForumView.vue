@@ -174,7 +174,10 @@
             <span>Tags rápidos</span>
             <input v-model="newThread.focus" type="text" placeholder="Ej. Storytelling, Métricas" />
           </label>
-          <BaseButton type="submit">Publicar hilo</BaseButton>
+          <p v-if="threadFormState.error" class="modal-field__error">{{ threadFormState.error }}</p>
+          <BaseButton type="submit" :disabled="threadFormState.isSubmitting">
+            {{ threadFormState.isSubmitting ? 'Publicando…' : 'Publicar hilo' }}
+          </BaseButton>
         </form>
       </div>
     </div>
@@ -195,6 +198,11 @@ const router = useRouter()
 
 const DEFAULT_FORUM_CATEGORIES = ['General', 'Producto', 'Diseño', 'Tech', 'Growth']
 const statusFilters = ['Todos', 'Nuevo', 'Con actividad']
+const THREAD_VALIDATION = {
+  titleMin: 5,
+  contentMin: 30,
+  categoryMin: 3
+}
 
 const selectedCategory = ref('Todos')
 const selectedStatus = ref(statusFilters[0])
@@ -206,6 +214,10 @@ const newThread = reactive({
   category: DEFAULT_FORUM_CATEGORIES[0],
   content: '',
   focus: ''
+})
+const threadFormState = reactive({
+  error: '',
+  isSubmitting: false
 })
 const commentDrafts = ref({})
 
@@ -302,11 +314,14 @@ const openModal = () => {
   if (!newThread.category) {
     newThread.category = selectableCategories.value[0] || DEFAULT_FORUM_CATEGORIES[0]
   }
+  threadFormState.error = ''
   isModalOpen.value = true
 }
 
 const closeModal = () => {
   isModalOpen.value = false
+  threadFormState.error = ''
+  threadFormState.isSubmitting = false
 }
 
 const ensureAuthenticated = () => {
@@ -316,27 +331,52 @@ const ensureAuthenticated = () => {
 }
 
 const handleCreateThread = async () => {
-  if (!ensureAuthenticated()) return
-  if (!newThread.title.trim() || !newThread.content.trim()) return
+  if (!ensureAuthenticated() || threadFormState.isSubmitting) return
+  threadFormState.error = ''
+
+  const title = newThread.title.trim()
+  const content = newThread.content.trim()
+  const category = (newThread.category || '').trim()
+
+  if (category.length < THREAD_VALIDATION.categoryMin) {
+    threadFormState.error = 'Elegí una categoría válida para clasificar tu hilo.'
+    return
+  }
+  if (title.length < THREAD_VALIDATION.titleMin) {
+    threadFormState.error = `El título necesita al menos ${THREAD_VALIDATION.titleMin} caracteres.`
+    return
+  }
+  if (content.length < THREAD_VALIDATION.contentMin) {
+    threadFormState.error = `El contexto necesita al menos ${THREAD_VALIDATION.contentMin} caracteres.`
+    return
+  }
+
   const focusList = newThread.focus
     .split(',')
     .map((token) => token.trim())
     .filter(Boolean)
-  const normalizedCategory = newThread.category || selectableCategories.value[0] || DEFAULT_FORUM_CATEGORIES[0]
+  const normalizedCategory = category || selectableCategories.value[0] || DEFAULT_FORUM_CATEGORIES[0]
+
+  threadFormState.isSubmitting = true
   try {
-    await forumStore.createThread({
-      title: newThread.title.trim(),
-      category: normalizedCategory,
-      content: newThread.content.trim(),
-      author: authStore.user?._id || authStore.user?.id
-    }, { focus: focusList })
+    await forumStore.createThread(
+      {
+        title,
+        category: normalizedCategory,
+        content,
+        author: authStore.user?._id || authStore.user?.id
+      },
+      { focus: focusList }
+    )
     newThread.title = ''
     newThread.content = ''
     newThread.focus = ''
     newThread.category = normalizedCategory
     closeModal()
   } catch (error) {
-    // handled via store error
+    threadFormState.error = error?.message || 'No pudimos publicar el hilo. Intentalo nuevamente.'
+  } finally {
+    threadFormState.isSubmitting = false
   }
 }
 

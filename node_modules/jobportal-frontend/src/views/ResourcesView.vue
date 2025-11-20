@@ -6,7 +6,8 @@
         <h2>Recursos curados para diseñar tu roadmap profesional con intención.</h2>
         <p>
           Playbooks, talleres y plantillas auditadas cada semana por mentores operando en squads reales.
-          Todo listo para compartir con tu cohorte en cuestión de minutos.
+          <BaseButton type="button" @click="openCreationModal">Publicar recurso</BaseButton>
+          <BaseButton type="button" variant="ghost">Explorar colecciones</BaseButton>
         </p>
         <div class="hero__badges">
           <span v-for="badge in heroBadges" :key="badge">{{ badge }}</span>
@@ -147,7 +148,8 @@
         </article>
       </template>
       <article v-else-if="!groupedResources.length && !resourcesStore.error" class="collection-card">
-        <template #title>Colecciones en camino</template>
+        <p class="section-kicker">Colecciones en camino</p>
+        <h3>Necesitamos más recursos</h3>
         <p>Añade nuevos recursos para desbloquear colecciones curadas.</p>
       </article>
       <template v-else>
@@ -183,20 +185,168 @@
         <BaseButton size="sm" variant="ghost" @click="resourcesStore.fetchResources()">Reintentar</BaseButton>
       </BaseCard>
     </section>
+
+    <div v-if="isCreationModalOpen" class="resource-modal" role="dialog" aria-modal="true">
+      <div class="resource-modal__panel">
+        <header class="resource-modal__header">
+          <div>
+            <p class="section-kicker">Nuevo recurso</p>
+            <h3>Publica videos, artículos o playbooks curados para tu cohorte.</h3>
+            <p>Comparte contexto, duración estimada y enlaces accionables.</p>
+          </div>
+          <button class="resource-modal__close" type="button" aria-label="Cerrar" @click="closeCreationModal">×</button>
+        </header>
+        <section class="resource-modal__body">
+          <form class="resource-modal__form" @submit.prevent="handleCreateResource">
+            <div class="resource-modal__types">
+              <button
+                v-for="type in RESOURCE_TYPES"
+                :key="type.value"
+                type="button"
+                class="resource-type-card"
+                :class="{ 'is-active': resourceForm.mediaType === type.value }"
+                :style="{ '--resource-accent': type.accent }"
+                @click="resourceForm.mediaType = type.value"
+              >
+                <strong>{{ type.label }}</strong>
+                <small>{{ type.description }}</small>
+              </button>
+            </div>
+            <div class="modal-grid">
+              <BaseInput v-model="resourceForm.title" label="Título" placeholder="Ej. Playbook de onboarding async" />
+              <BaseInput
+                v-model="resourceForm.category"
+                label="Categoría"
+                placeholder="Producto, Carrera, Growth…"
+              />
+            </div>
+            <label class="modal-field">
+              <span>Resumen ejecutivo</span>
+              <textarea
+                v-model="resourceForm.summary"
+                rows="3"
+                placeholder="Cuenta qué problema resuelve y qué entregables incluye."
+              ></textarea>
+            </label>
+            <label class="modal-field">
+              <span>Contenido / instrucciones</span>
+              <textarea
+                v-model="resourceForm.content"
+                rows="6"
+                placeholder="Describe los pasos, materiales, checklist o enlaces clave."
+              ></textarea>
+            </label>
+            <div class="modal-grid modal-grid--compact">
+              <BaseInput v-model="resourceForm.duration" label="Duración estimada" placeholder="10 min" />
+              <BaseInput v-model="resourceForm.tags" label="Tags (coma)" placeholder="Mentoría, Sprint, UX" />
+            </div>
+            <label class="modal-field">
+              <span>{{ selectedBlueprint.requiresMedia ? 'Enlace del video o demo' : 'Enlace de apoyo (opcional)' }}</span>
+              <input
+                v-model="resourceForm.mediaUrl"
+                type="url"
+                :placeholder="selectedBlueprint.mediaPlaceholder"
+              />
+            </label>
+            <p class="modal-hint">{{ selectedBlueprint.helper }}</p>
+            <p v-if="resourceModalState.error" class="modal-field__error">{{ resourceModalState.error }}</p>
+            <p v-if="resourceModalState.success" class="modal-field__success">{{ resourceModalState.success }}</p>
+            <div class="resource-modal__actions">
+              <BaseButton type="button" variant="ghost" @click="closeCreationModal">Cancelar</BaseButton>
+              <BaseButton type="submit" :disabled="resourceModalState.isSubmitting">
+                {{ resourceModalState.isSubmitting ? 'Publicando…' : 'Publicar recurso' }}
+              </BaseButton>
+            </div>
+          </form>
+          <aside class="resource-modal__preview">
+            <p class="section-kicker">Vista previa</p>
+            <article class="resource-card resource-card--preview">
+              <div class="resource-card__labels">
+                <span class="resource-card__format">{{ creationPreview.format }}</span>
+                <span class="resource-card__status">Nuevo</span>
+              </div>
+              <h4>{{ creationPreview.title }}</h4>
+              <p>{{ creationPreview.description }}</p>
+              <ul class="resource-card__tags">
+                <li v-for="tag in creationPreview.tags" :key="tag">{{ tag }}</li>
+              </ul>
+              <div class="resource-card__meta">
+                <div>
+                  <small>Categoría</small>
+                  <p>{{ creationPreview.category }}</p>
+                </div>
+                <div>
+                  <small>Duración</small>
+                  <p>{{ creationPreview.duration }}</p>
+                </div>
+              </div>
+              <div class="resource-card__footer">
+                <span>Por {{ creationPreview.author }}</span>
+                <BaseButton variant="secondary" size="sm" type="button" disabled>Vista previa</BaseButton>
+              </div>
+            </article>
+            <p v-if="resourceForm.mediaUrl" class="resource-modal__media">
+              Enlace adjunto:
+              <a :href="resourceForm.mediaUrl" target="_blank" rel="noopener">{{ resourceForm.mediaUrl }}</a>
+            </p>
+          </aside>
+        </section>
+      </div>
+    </div>
   </section>
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import BaseButton from '@/components/BaseButton.vue'
 import BaseInput from '@/components/BaseInput.vue'
 import BaseCard from '@/components/BaseCard.vue'
 import { useResourcesStore } from '@/stores/resourcesStore'
+import { useAuthStore } from '@/stores/authStore'
 
 const resourcesStore = useResourcesStore()
+const authStore = useAuthStore()
+const router = useRouter()
 
 const statusFilters = ['Todos', 'Nuevo']
 const heroBadges = ['Playbooks accionables', 'Feedback curado', 'Ready to ship']
+const RESOURCE_TYPES = [
+  {
+    value: 'article',
+    label: 'Artículo táctico',
+    format: 'Artículo',
+    description: 'Ideal para guías y lecturas accionables.',
+    accent: '#6366f1',
+    defaultDuration: '8 min',
+    helper: 'Comparte frameworks, aprendizajes y anexos listos para compartir.',
+    requiresMedia: false,
+    mediaPlaceholder: 'https://mi-blog.com/roadmap'
+  },
+  {
+    value: 'video',
+    label: 'Video guía',
+    format: 'Video',
+    description: 'Perfecto para demos o tutoriales hands-on.',
+    accent: '#0ea5e9',
+    defaultDuration: '5 min',
+    helper: 'Sube tu demo a Loom, YouTube o Vimeo y pega el enlace.',
+    requiresMedia: true,
+    mediaPlaceholder: 'https://loom.com/share/demo'
+  },
+  {
+    value: 'playbook',
+    label: 'Playbook / Taller',
+    format: 'Playbook',
+    description: 'Plantillas descargables, workshops o kits.',
+    accent: '#f97316',
+    defaultDuration: '15 min',
+    helper: 'Comparte links a Notion, FigJam, Figma o Slides.',
+    requiresMedia: false,
+    mediaPlaceholder: 'https://notion.so/mi-playbook'
+  }
+]
+const DEFAULT_RESOURCE_TYPE = RESOURCE_TYPES.find((type) => type.value === 'article') || RESOURCE_TYPES[0]
 
 const formatDetails = {
   Playbook: {
@@ -230,15 +380,43 @@ const defaultFormatDetail = (format) => ({
 const searchQuery = ref('')
 const selectedFilter = ref('Todos')
 const selectedStatus = ref(statusFilters[0])
+const isCreationModalOpen = ref(false)
+
+const resourceForm = reactive({
+  title: '',
+  category: '',
+  mediaType: DEFAULT_RESOURCE_TYPE.value,
+  format: DEFAULT_RESOURCE_TYPE.format,
+  summary: '',
+  mediaUrl: '',
+  duration: DEFAULT_RESOURCE_TYPE.defaultDuration,
+  content: '',
+  tags: ''
+})
+
+const resourceModalState = reactive({
+  error: '',
+  success: '',
+  isSubmitting: false
+})
 
 const categoryFilters = computed(() => {
   const categories = Array.from(new Set(resourcesStore.resources.map((resource) => resource.category)))
   return ['Todos', ...categories]
 })
 
+const categorySuggestions = computed(() => categoryFilters.value.filter((category) => category !== 'Todos'))
+
 watch(categoryFilters, (filters) => {
   if (!filters.includes(selectedFilter.value)) {
     selectedFilter.value = 'Todos'
+  }
+})
+
+watch(categorySuggestions, (categories) => {
+  if (!categories.length) return
+  if (!categories.includes(resourceForm.category)) {
+    resourceForm.category = categories[0]
   }
 })
 
@@ -302,6 +480,147 @@ const heroHighlights = computed(() => [
   { label: 'Actualizados este mes', value: formatNumber(recentResources.value.length), description: 'Entradas recientes' },
   { label: 'Lectura estimada', value: averageReadTime.value, description: 'Tiempo promedio' }
 ])
+
+const selectedBlueprint = computed(() => RESOURCE_TYPES.find((type) => type.value === resourceForm.mediaType) || RESOURCE_TYPES[0])
+
+watch(
+  () => resourceForm.mediaType,
+  () => {
+    const blueprint = selectedBlueprint.value
+    resourceForm.format = blueprint.format
+    if (!resourceForm.duration) {
+      resourceForm.duration = blueprint.defaultDuration
+    }
+  },
+  { immediate: true }
+)
+
+const parsedTags = computed(() => {
+  return resourceForm.tags
+    .split(',')
+    .map((tag) => tag.trim())
+    .filter((tag, index, list) => tag && list.indexOf(tag) === index)
+    .slice(0, 6)
+})
+
+const previewTags = computed(() => (parsedTags.value.length ? parsedTags.value : ['Mentoría', 'Sprint']))
+
+const creationPreview = computed(() => ({
+  title: resourceForm.title || 'Nuevo recurso sin título',
+  category: resourceForm.category || categorySuggestions.value[0] || 'Carrera',
+  format: selectedBlueprint.value.format,
+  description:
+    resourceForm.summary || 'Describe el objetivo, entregables y resultados esperados de tu recurso.',
+  tags: previewTags.value,
+  duration: resourceForm.duration || selectedBlueprint.value.defaultDuration,
+  author: authStore.user?.name || 'Equipo JobPortal'
+}))
+
+const ensureAuthenticated = () => {
+  if (authStore.isAuthenticated) return true
+  router.push({ name: 'login', query: { redirect: '/resources' } })
+  return false
+}
+
+const resetResourceForm = () => {
+  const fallbackCategory = categorySuggestions.value[0] || 'Carrera'
+  resourceForm.title = ''
+  resourceForm.category = fallbackCategory
+  resourceForm.mediaType = DEFAULT_RESOURCE_TYPE.value
+  resourceForm.format = DEFAULT_RESOURCE_TYPE.format
+  resourceForm.summary = ''
+  resourceForm.mediaUrl = ''
+  resourceForm.duration = DEFAULT_RESOURCE_TYPE.defaultDuration
+  resourceForm.content = ''
+  resourceForm.tags = ''
+}
+
+const openCreationModal = () => {
+  if (!ensureAuthenticated()) return
+  resetResourceForm()
+  resourceModalState.error = ''
+  resourceModalState.success = ''
+  isCreationModalOpen.value = true
+}
+
+const closeCreationModal = () => {
+  isCreationModalOpen.value = false
+  resourceModalState.error = ''
+  resourceModalState.success = ''
+  resetResourceForm()
+}
+
+const isValidHttpUrl = (value) => {
+  try {
+    const url = new URL(value)
+    return ['http:', 'https:'].includes(url.protocol)
+  } catch (error) {
+    return false
+  }
+}
+
+const handleCreateResource = async () => {
+  if (!ensureAuthenticated() || resourceModalState.isSubmitting) return
+  resourceModalState.error = ''
+  const title = resourceForm.title.trim()
+  const category = resourceForm.category.trim()
+  const summary = resourceForm.summary.trim()
+  const content = resourceForm.content.trim()
+  const duration = resourceForm.duration.trim()
+  const mediaUrl = resourceForm.mediaUrl.trim()
+  const blueprint = selectedBlueprint.value
+
+  if (title.length < 4) {
+    resourceModalState.error = 'El título necesita al menos 4 caracteres.'
+    return
+  }
+  if (category.length < 3) {
+    resourceModalState.error = 'Define una categoría clara para clasificar el recurso.'
+    return
+  }
+  if (summary && summary.length < 20) {
+    resourceModalState.error = 'El resumen debe tener al menos 20 caracteres.'
+    return
+  }
+  if (content.length < 60) {
+    resourceModalState.error = 'Comparte al menos 60 caracteres de contexto o instrucciones.'
+    return
+  }
+  if (!duration) {
+    resourceModalState.error = 'Incluye una duración estimada.'
+    return
+  }
+  if (blueprint.requiresMedia && !mediaUrl) {
+    resourceModalState.error = 'Adjunta el enlace del video o demo.'
+    return
+  }
+  if (mediaUrl && !isValidHttpUrl(mediaUrl)) {
+    resourceModalState.error = 'El enlace debe ser una URL válida.'
+    return
+  }
+
+  resourceModalState.isSubmitting = true
+  try {
+    await resourcesStore.createResource({
+      title,
+      category,
+      content,
+      summary: summary || undefined,
+      format: blueprint.format,
+      mediaType: blueprint.value,
+      mediaUrl: mediaUrl || undefined,
+      duration,
+      author: authStore.user?.name || 'Equipo JobPortal',
+      tags: parsedTags.value
+    })
+    resourceModalState.success = 'Recurso publicado correctamente.'
+    resetResourceForm()
+  } catch (error) {
+    resourceModalState.error = error?.message || 'No pudimos publicar el recurso. Intentalo nuevamente.'
+  } finally {
+    resourceModalState.isSubmitting = false
+  }
+}
 
 onMounted(() => {
   resourcesStore.fetchResources()
@@ -723,6 +1042,182 @@ onMounted(() => {
   .resource-grid,
   .collection-card {
     padding: 1.3rem;
+  }
+}
+
+.resource-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.65);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  z-index: 50;
+}
+
+.resource-modal__panel {
+  width: min(1080px, 100%);
+  max-height: 90vh;
+  overflow-y: auto;
+  background: var(--clr-surface);
+  border-radius: var(--radius-xxl, 32px);
+  padding: 2rem;
+  box-shadow: var(--shadow-xxl, 0 35px 90px rgba(15, 23, 42, 0.35));
+}
+
+.resource-modal__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+  border-bottom: 1px solid var(--clr-border);
+  padding-bottom: 1.2rem;
+  margin-bottom: 1.5rem;
+}
+
+.resource-modal__close {
+  border: none;
+  background: rgba(15, 23, 42, 0.06);
+  border-radius: 999px;
+  width: 40px;
+  height: 40px;
+  font-size: 1.4rem;
+  cursor: pointer;
+}
+
+.resource-modal__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
+  gap: 1.5rem;
+}
+
+.resource-modal__form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.resource-modal__types {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+}
+
+.resource-type-card {
+  border: 1px solid var(--clr-border);
+  border-radius: var(--radius-lg);
+  padding: 0.8rem 1rem;
+  background: var(--clr-bg-muted);
+  min-width: 180px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.resource-type-card strong {
+  font-size: 0.9rem;
+}
+
+.resource-type-card small {
+  font-size: 0.8rem;
+  color: var(--clr-muted);
+}
+
+.resource-type-card.is-active {
+  border-color: var(--resource-accent, var(--clr-primary));
+  background: rgba(99, 102, 241, 0.08);
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.12);
+}
+
+.modal-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.modal-grid--compact {
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+.modal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.modal-field textarea,
+.modal-field input {
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--clr-border);
+  padding: 0.65rem 0.85rem;
+  font-family: inherit;
+  font-size: 0.95rem;
+  background: var(--clr-bg-muted);
+}
+
+.modal-hint {
+  font-size: 0.85rem;
+  color: var(--clr-muted);
+  margin: 0;
+}
+
+.modal-field__error {
+  color: var(--clr-danger, #ef4444);
+  font-weight: 600;
+}
+
+.modal-field__success {
+  color: var(--clr-success, #16a34a);
+  font-weight: 600;
+}
+
+.resource-modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.8rem;
+}
+
+.resource-modal__preview {
+  border: 1px solid var(--clr-border);
+  border-radius: var(--radius-xl);
+  padding: 1.2rem;
+  background: var(--clr-bg-muted);
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.resource-modal__preview .resource-card__labels {
+  margin-bottom: 0.2rem;
+}
+
+.resource-card--preview {
+  border: none;
+  background: #fff;
+}
+
+.resource-modal__media {
+  font-size: 0.85rem;
+  color: var(--clr-muted);
+  word-break: break-word;
+}
+
+.resource-modal__media a {
+  color: var(--clr-primary);
+  text-decoration: underline;
+}
+
+@media (max-width: 1024px) {
+  .resource-modal__body {
+    grid-template-columns: 1fr;
+  }
+
+  .resource-modal {
+    padding: 1rem;
   }
 }
 </style>

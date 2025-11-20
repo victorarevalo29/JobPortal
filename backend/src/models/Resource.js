@@ -16,6 +16,45 @@ const resourceSchema = new Schema({
     trim: true,
     maxlength: 80
   },
+  format: {
+    type: String,
+    enum: ['Artículo', 'Video', 'Playbook', 'Taller', 'Plantilla'],
+    default: 'Artículo'
+  },
+  mediaType: {
+    type: String,
+    enum: ['article', 'video', 'playbook', 'template', 'workshop'],
+    default: 'article'
+  },
+  mediaUrl: {
+    type: String,
+    trim: true,
+    maxlength: 400
+  },
+  duration: {
+    type: String,
+    trim: true,
+    maxlength: 40
+  },
+  author: {
+    type: String,
+    trim: true,
+    maxlength: 120,
+    default: 'Equipo JobPortal'
+  },
+  tags: {
+    type: [String],
+    default: [],
+    validate: {
+      validator: (value) => Array.isArray(value) && value.length <= 8,
+      message: 'Máximo 8 tags por recurso'
+    }
+  },
+  summary: {
+    type: String,
+    trim: true,
+    maxlength: 320
+  },
   content: {
     type: String,
     required: true,

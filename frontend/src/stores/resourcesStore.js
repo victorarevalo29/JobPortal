@@ -41,20 +41,35 @@ const buildTags = (resource) => {
 }
 
 const mapResource = (resource) => {
-  const snippet = resource.content?.trim() || ''
-  const normalizedSnippet = snippet.length > 200 ? `${snippet.slice(0, 200)}…` : snippet
-  const status = daysSince(resource.publishedAt || resource.createdAt) <= 21 ? ['Nuevo'] : []
+  const snippetSource = resource.summary?.trim() || resource.content?.trim() || ''
+  const normalizedSnippet = snippetSource.length > 200 ? `${snippetSource.slice(0, 200)}…` : snippetSource
+  const status = resource.status?.length
+    ? resource.status
+    : daysSince(resource.publishedAt || resource.createdAt) <= 21
+      ? ['Nuevo']
+      : []
+  const format = resource.format || inferFormat(resource.category, resource.title)
+  const tags = Array.isArray(resource.tags) && resource.tags.length ? resource.tags : buildTags(resource)
+  const duration = resource.duration?.trim() || readTimeFromContent(resource.content)
+  const media = resource.mediaUrl
+    ? {
+        type: resource.mediaType || (format === 'Video' ? 'video' : 'article'),
+        url: resource.mediaUrl
+      }
+    : null
+
   return {
     id: resource._id,
     title: resource.title,
     category: resource.category,
-    format: inferFormat(resource.category, resource.title),
+    format,
     description: normalizedSnippet,
     date: formatDateLabel(resource.publishedAt || resource.createdAt),
-    duration: readTimeFromContent(resource.content),
+    duration,
     author: resource.author || 'Equipo JobPortal',
-    tags: buildTags(resource),
+    tags,
     status,
+    media,
     raw: resource
   }
 }
@@ -63,7 +78,8 @@ export const useResourcesStore = defineStore('resources', {
   state: () => ({
     resources: [],
     loading: false,
-    error: ''
+    error: '',
+    creating: false
   }),
   actions: {
     async fetchResources(params = {}) {
@@ -77,6 +93,21 @@ export const useResourcesStore = defineStore('resources', {
         this.resources = []
       } finally {
         this.loading = false
+      }
+    },
+    async createResource(payload) {
+      this.creating = true
+      this.error = ''
+      try {
+        const data = await apiRequest('/resources', { method: 'POST', data: payload, auth: true })
+        const resource = mapResource(data)
+        this.resources = [resource, ...this.resources]
+        return resource
+      } catch (error) {
+        this.error = error.message
+        throw error
+      } finally {
+        this.creating = false
       }
     }
   }
